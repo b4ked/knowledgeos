@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "../lib/compiler/**/*.ts",
+    "../lib/conventions/**/*.ts",
+    "../lib/embeddings/**/*.ts",
+    "../lib/graph/**/*.ts",
+    "../lib/llm/**/*.ts",
+    "../lib/server/**/*.ts",
+    "../lib/vault/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=KnowledgeOS Backend
+After=network.target
+
+[Service]
+Type=simple
+User=parryh
+Group=parryh
+WorkingDirectory=/home/parryh/apps/knowledgeos/backend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /home/parryh/apps/knowledgeos/backend/dist/backend/src/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

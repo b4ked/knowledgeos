@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:backend": "npm --prefix backend run dev",
     "build": "next build",
+    "build:backend": "npm --prefix backend run build",
     "start": "next start",
+    "start:backend": "npm --prefix backend run start",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui"
