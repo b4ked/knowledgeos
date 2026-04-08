@@ -1,29 +1,15 @@
-import path from 'path'
-import { compile } from '@/lib/compiler/compile'
-import type { Conventions } from '@/lib/conventions/types'
+import { compileNotes } from '@/lib/server/compile'
+import { proxyToBackend, shouldProxyToBackend } from '@/lib/server/proxy'
+import { jsonError } from '@/lib/server/response'
 
 export async function POST(request: Request) {
-  const body = await request.json() as {
-    notePaths?: string[]
-    outputFilename?: string
-    conventions?: Partial<Conventions>
+  if (shouldProxyToBackend()) {
+    return proxyToBackend(request)
   }
-
-  const { notePaths, outputFilename, conventions } = body
-
-  if (!Array.isArray(notePaths) || notePaths.length === 0) {
-    return Response.json({ error: 'notePaths must be a non-empty array' }, { status: 400 })
-  }
-
-  const vaultPath = process.env.VAULT_PATH
-    ? path.resolve(process.env.VAULT_PATH)
-    : path.resolve('./vault')
 
   try {
-    const result = await compile(notePaths, outputFilename, vaultPath, conventions ?? {})
-    return Response.json(result, { status: 200 })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Compilation failed'
-    return Response.json({ error: message }, { status: 500 })
+    return Response.json(await compileNotes(await request.json()), { status: 200 })
+  } catch (error) {
+    return jsonError(error)
   }
 }

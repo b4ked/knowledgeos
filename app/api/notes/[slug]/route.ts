@@ -1,31 +1,21 @@
-import path from 'path'
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
-
-function getAdapter() {
-  const vaultPath = process.env.VAULT_PATH
-    ? path.resolve(process.env.VAULT_PATH)
-    : path.resolve('./vault')
-  return new LocalVaultAdapter(vaultPath)
-}
+import { deleteNote, readNote } from '@/lib/server/notes'
+import { proxyToBackend, shouldProxyToBackend } from '@/lib/server/proxy'
+import { jsonError } from '@/lib/server/response'
 
 export async function GET(
   request: Request,
   ctx: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await ctx.params
-  const folder = new URL(request.url).searchParams.get('folder') as 'raw' | 'wiki' | null
-  if (folder !== 'raw' && folder !== 'wiki') {
-    return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
+  if (shouldProxyToBackend()) {
+    return proxyToBackend(request)
   }
 
-  const notePath = `${folder}/${slug}.md`
-  const adapter = getAdapter()
-
   try {
-    const content = await adapter.readNote(notePath)
-    return Response.json({ content })
-  } catch {
-    return Response.json({ error: `Note not found: ${slug}` }, { status: 404 })
+    const { slug } = await ctx.params
+    const folder = new URL(request.url).searchParams.get('folder')
+    return Response.json(await readNote(slug, folder))
+  } catch (error) {
+    return jsonError(error)
   }
 }
 
@@ -33,19 +23,16 @@ export async function DELETE(
   request: Request,
   ctx: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await ctx.params
-  const folder = new URL(request.url).searchParams.get('folder') as 'raw' | 'wiki' | null
-  if (folder !== 'raw' && folder !== 'wiki') {
-    return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
+  if (shouldProxyToBackend()) {
+    return proxyToBackend(request)
   }
 
-  const notePath = `${folder}/${slug}.md`
-  const adapter = getAdapter()
-
   try {
-    await adapter.deleteNote(notePath)
+    const { slug } = await ctx.params
+    const folder = new URL(request.url).searchParams.get('folder')
+    await deleteNote(slug, folder)
     return new Response(null, { status: 204 })
-  } catch {
-    return Response.json({ error: `Note not found: ${slug}` }, { status: 404 })
+  } catch (error) {
+    return jsonError(error)
   }
 }

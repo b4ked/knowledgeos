@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!backend/.env.example
 
 # vercel
 .vercel
@@ -41,5 +43,5 @@ yarn-error.log*
 next-env.d.ts
 
 # KnowledgeOS — never commit secrets or vault data
-vault/
-CONVENTIONS.json
+/vault/
+/CONVENTIONS.json

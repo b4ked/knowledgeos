@@ -1,35 +1,15 @@
-import path from 'path'
-import { getLLMProvider } from '@/lib/llm/getLLMProvider'
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
-import { upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
+import { reindexEmbeddings } from '@/lib/server/embeddings'
+import { proxyToBackend, shouldProxyToBackend } from '@/lib/server/proxy'
+import { jsonError } from '@/lib/server/response'
 
-export async function POST() {
-  const vaultPath = process.env.VAULT_PATH
-    ? path.resolve(process.env.VAULT_PATH)
-    : path.resolve('./vault')
-
-  const adapter = new LocalVaultAdapter(vaultPath)
-  const llm = getLLMProvider()
-  const provider = process.env.LLM_PROVIDER ?? 'anthropic'
-  const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
-
-  await adapter.ensureDirectories()
-  const notes = await adapter.listNotes('wiki')
-
-  const results: { slug: string; ok: boolean; error?: string }[] = []
-
-  for (const note of notes) {
-    try {
-      const content = await adapter.readNote(note.path)
-      const embedding = await llm.embed(content)
-      await upsertEmbedding(vaultPath, note.slug, embedding)
-      results.push({ slug: note.slug, ok: true })
-    } catch (err) {
-      results.push({ slug: note.slug, ok: false, error: (err as Error).message })
-    }
+export async function POST(request: Request) {
+  if (shouldProxyToBackend()) {
+    return proxyToBackend(request)
   }
 
-  await writeMeta(vaultPath, { provider, model, updatedAt: new Date().toISOString() })
-
-  return Response.json({ indexed: results.filter((r) => r.ok).length, results })
+  try {
+    return Response.json(await reindexEmbeddings())
+  } catch (error) {
+    return jsonError(error)
+  }
 }
