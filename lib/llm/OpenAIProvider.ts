@@ -63,8 +63,13 @@ export class OpenAIProvider implements LLMProvider {
     return text
   }
 
-  async embed(_text: string): Promise<number[]> {
-    // text-embedding-3-small implemented in M4
-    throw new Error('Embeddings not yet implemented — available in M4')
+  async embed(text: string): Promise<number[]> {
+    const response = await this.client.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text,
+    })
+    return response.data[0].embedding
   }
+
+  get embeddingModel(): string { return 'text-embedding-3-small' }
 }

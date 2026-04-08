@@ -3,6 +3,7 @@ import path from 'path'
 import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
+import { upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
 import type { Conventions } from '@/lib/conventions/types'
 
 export interface CompileResult {
@@ -44,6 +45,17 @@ export async function compile(
 
   // Update vault/index.md
   await updateIndex(vaultPath, wikilinks)
+
+  // Generate and store embedding (non-fatal — compile succeeds even if embed fails)
+  try {
+    const embedding = await llm.embed(output)
+    await upsertEmbedding(vaultPath, slug, embedding)
+    const provider = conventions.provider ?? process.env.LLM_PROVIDER ?? 'anthropic'
+    const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
+    await writeMeta(vaultPath, { provider, model, updatedAt: new Date().toISOString() })
+  } catch (err) {
+    console.warn('[compile] Embedding skipped:', (err as Error).message)
+  }
 
   return { outputPath, slug, wikilinks }
 }

@@ -62,8 +62,23 @@ export class AnthropicProvider implements LLMProvider {
     return block.text
   }
 
-  async embed(_text: string): Promise<number[]> {
-    // Voyage embeddings implemented in M4
-    throw new Error('Embeddings not yet implemented — available in M4')
+  async embed(text: string): Promise<number[]> {
+    const key = process.env.VOYAGE_API_KEY
+    if (!key) {
+      throw new Error(
+        'VOYAGE_API_KEY is required for embeddings with the Anthropic provider. ' +
+        'Add it to .env.local or switch LLM_PROVIDER=openai.'
+      )
+    }
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: text, model: 'voyage-3-lite' }),
+    })
+    if (!res.ok) throw new Error(`Voyage API error ${res.status}: ${await res.text()}`)
+    const data = await res.json() as { data: { embedding: number[] }[] }
+    return data.data[0].embedding
   }
+
+  get embeddingModel(): string { return 'voyage-3-lite' }
 }

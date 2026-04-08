@@ -7,6 +7,7 @@ import NoteList from '@/components/NoteList'
 import NoteViewer from '@/components/NoteViewer'
 import NewNotePanel from '@/components/NewNotePanel'
 import GraphView from '@/components/GraphView'
+import ChatPanel from '@/components/ChatPanel'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -25,6 +26,7 @@ export default function Home() {
   const [showGraph, setShowGraph] = useState(false)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [graphLoading, setGraphLoading] = useState(false)
+  const [showChat, setShowChat] = useState(false)
 
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
@@ -156,6 +158,26 @@ export default function Home() {
     }
   }
 
+  async function handleChatSourceClick(slug: string) {
+    setFolder('wiki')
+    setTimeout(async () => {
+      const res = await fetch(`/api/notes/${slug}?folder=wiki`)
+      if (res.ok) {
+        const { content } = await res.json()
+        setSelectedNote({
+          slug,
+          filename: `${slug}.md`,
+          folder: 'wiki',
+          path: `wiki/${slug}.md`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(content)
+        setPanel('viewer')
+      }
+    }, 150)
+  }
+
   function handleGraphNodeClick(nodeId: string, nodeType: 'wiki' | 'raw' | 'stub') {
     if (nodeType === 'stub') return
     const targetFolder = nodeType === 'wiki' ? 'wiki' : 'raw'
@@ -184,6 +206,7 @@ export default function Home() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey && e.key === 'n') { e.preventDefault(); setPanel('new') }
       if (e.metaKey && e.key === 'g') { e.preventDefault(); setShowGraph((v) => !v) }
+      if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -202,7 +225,15 @@ export default function Home() {
           >
             ⌘N
           </button>
-          <button className="px-2 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors">
+          <button
+            onClick={() => setShowChat((v) => !v)}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showChat
+                ? 'bg-blue-900 text-blue-200'
+                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="Toggle chat (⌘/)"
+          >
             ⌘/
           </button>
           <button
@@ -302,6 +333,13 @@ export default function Home() {
               </div>
             )}
           </main>
+
+          {/* Chat panel */}
+          {showChat && (
+            <aside className="w-80 bg-gray-950 border-l border-gray-800 flex flex-col shrink-0">
+              <ChatPanel onSourceClick={handleChatSourceClick} />
+            </aside>
+          )}
 
           {/* Graph panel */}
           {showGraph && (
