@@ -17,6 +17,9 @@ export async function compile(
   vaultPath: string,
   conventions: Partial<Conventions> = {}
 ): Promise<CompileResult> {
+  // merged is used for buildSystemPrompt — defaults fill missing fields
+  // getLLMProvider receives only user-supplied conventions so the LLM_PROVIDER
+  // env var is not silently shadowed by DEFAULT_CONVENTIONS.provider
   const merged = { ...DEFAULT_CONVENTIONS, ...conventions }
   const adapter = new LocalVaultAdapter(vaultPath)
 
@@ -24,7 +27,7 @@ export async function compile(
   const sources = await Promise.all(notePaths.map((p) => adapter.readNote(p)))
 
   // Compile via LLM
-  const llm = getLLMProvider(merged)
+  const llm = getLLMProvider(conventions)
   const output = await llm.compile(sources, merged)
 
   // Extract wikilinks from output
