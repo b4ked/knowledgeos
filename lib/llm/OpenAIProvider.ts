@@ -13,8 +13,8 @@ export class OpenAIProvider implements LLMProvider {
     options?: { compilationModel?: string; queryModel?: string }
   ) {
     this.client = new OpenAI({ apiKey })
-    this.compilationModel = options?.compilationModel ?? 'gpt-4o'
-    this.queryModel = options?.queryModel ?? 'gpt-4o'
+    this.compilationModel = options?.compilationModel ?? 'gpt-4.1-nano'
+    this.queryModel = options?.queryModel ?? 'gpt-4.1-nano'
   }
 
   async compile(sources: string[], conventions: Conventions): Promise<string> {
