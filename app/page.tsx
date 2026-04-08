@@ -17,6 +17,9 @@ export default function Home() {
   const [panel, setPanel] = useState<Panel>('viewer')
   const [loading, setLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<NoteMetadata | null>(null)
+  const [checkedSlugs, setCheckedSlugs] = useState<Set<string>>(new Set())
+  const [compiling, setCompiling] = useState(false)
+  const [compileError, setCompileError] = useState<string | null>(null)
 
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
@@ -36,6 +39,8 @@ export default function Home() {
     setSelectedNote(null)
     setNoteContent('')
     setPanel('viewer')
+    setCheckedSlugs(new Set())
+    setCompileError(null)
   }, [folder, loadNotes])
 
   async function handleSelectNote(note: NoteMetadata) {
@@ -72,6 +77,61 @@ export default function Home() {
     loadNotes(folder)
     setPanel('viewer')
     handleSelectNote(note)
+  }
+
+  function handleCheck(slug: string, isChecked: boolean) {
+    setCheckedSlugs((prev) => {
+      const next = new Set(prev)
+      if (isChecked) next.add(slug)
+      else next.delete(slug)
+      return next
+    })
+  }
+
+  async function handleCompile() {
+    if (checkedSlugs.size === 0) return
+    setCompiling(true)
+    setCompileError(null)
+
+    const notePaths = notes
+      .filter((n) => checkedSlugs.has(n.slug))
+      .map((n) => n.path)
+
+    try {
+      const res = await fetch('/api/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notePaths }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCompileError(data.error ?? 'Compilation failed')
+        return
+      }
+      // Switch to wiki tab and open the compiled note
+      setCheckedSlugs(new Set())
+      setFolder('wiki')
+      // loadNotes fires from the folder effect; then select the new note
+      setTimeout(async () => {
+        const wikiRes = await fetch(`/api/notes/${data.slug}?folder=wiki`)
+        if (wikiRes.ok) {
+          const { content } = await wikiRes.json()
+          setSelectedNote({
+            slug: data.slug,
+            filename: `${data.slug}.md`,
+            folder: 'wiki',
+            path: `wiki/${data.slug}.md`,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          setNoteContent(content)
+        }
+      }, 300)
+    } catch {
+      setCompileError('Network error — could not compile')
+    } finally {
+      setCompiling(false)
+    }
   }
 
   // Keyboard shortcuts
@@ -148,7 +208,32 @@ export default function Home() {
               selectedSlug={selectedNote?.slug ?? null}
               onSelect={handleSelectNote}
               onDelete={handleDeleteNote}
+              checkable={folder === 'raw'}
+              checked={checkedSlugs}
+              onCheck={handleCheck}
             />
+          )}
+
+          {/* Compile button — only shown in raw folder */}
+          {folder === 'raw' && (
+            <div className="shrink-0 px-3 py-2 border-t border-gray-800">
+              {compileError && (
+                <p className="text-xs text-red-400 mb-2 truncate" title={compileError}>
+                  {compileError}
+                </p>
+              )}
+              <button
+                onClick={handleCompile}
+                disabled={checkedSlugs.size === 0 || compiling}
+                className="w-full px-3 py-2 text-xs font-medium rounded transition-colors bg-blue-900 text-blue-200 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {compiling
+                  ? 'Compiling…'
+                  : checkedSlugs.size > 0
+                  ? `Compile Selected (${checkedSlugs.size})`
+                  : 'Compile Selected'}
+              </button>
+            </div>
           )}
         </aside>
 
