@@ -10,7 +10,9 @@
     "outDir": "dist",
     "baseUrl": "..",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "openai": ["./backend/node_modules/openai"],
+      "@anthropic-ai/sdk": ["./backend/node_modules/@anthropic-ai/sdk"]
     }
   },
   "include": [
