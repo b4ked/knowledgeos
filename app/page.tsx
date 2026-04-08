@@ -8,6 +8,9 @@ import NoteViewer from '@/components/NoteViewer'
 import NewNotePanel from '@/components/NewNotePanel'
 import GraphView from '@/components/GraphView'
 import ChatPanel from '@/components/ChatPanel'
+import ConventionsEditor from '@/components/ConventionsEditor'
+import ToastStack from '@/components/ToastStack'
+import { useToast } from '@/lib/toast/useToast'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -27,6 +30,8 @@ export default function Home() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [graphLoading, setGraphLoading] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showConventions, setShowConventions] = useState(false)
+  const { toasts, addToast, removeToast } = useToast()
 
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
@@ -94,6 +99,7 @@ export default function Home() {
       }
       await loadNotes(folder)
       if (showGraph) loadGraph()
+      addToast(`Deleted ${deleteConfirm.slug}`, 'info')
     }
     setDeleteConfirm(null)
   }
@@ -102,6 +108,7 @@ export default function Home() {
     loadNotes(folder)
     setPanel('viewer')
     handleSelectNote(note)
+    addToast(`Saved ${note.slug}`, 'success')
   }
 
   function handleCheck(slug: string, isChecked: boolean) {
@@ -136,6 +143,7 @@ export default function Home() {
       setCheckedSlugs(new Set())
       setFolder('wiki')
       if (showGraph) loadGraph()
+      addToast(`Compiled → ${data.slug}`, 'success')
       setTimeout(async () => {
         const wikiRes = await fetch(`/api/notes/${data.slug}?folder=wiki`)
         if (wikiRes.ok) {
@@ -155,6 +163,27 @@ export default function Home() {
       setCompileError('Network error — could not compile')
     } finally {
       setCompiling(false)
+    }
+  }
+
+  async function handleWikilinkClick(slug: string) {
+    // Navigate to a wiki note from a [[wikilink]] click inside the viewer
+    setFolder('wiki')
+    const res = await fetch(`/api/notes/${slug}?folder=wiki`)
+    if (res.ok) {
+      const { content } = await res.json()
+      setSelectedNote({
+        slug,
+        filename: `${slug}.md`,
+        folder: 'wiki',
+        path: `wiki/${slug}.md`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      setNoteContent(content)
+      setPanel('viewer')
+    } else {
+      addToast(`Note not found: ${slug}`, 'error')
     }
   }
 
@@ -207,6 +236,7 @@ export default function Home() {
       if (e.metaKey && e.key === 'n') { e.preventDefault(); setPanel('new') }
       if (e.metaKey && e.key === 'g') { e.preventDefault(); setShowGraph((v) => !v) }
       if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
+      if (e.metaKey && e.key === ',') { e.preventDefault(); setShowConventions((v) => !v) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -246,6 +276,17 @@ export default function Home() {
             title="Toggle graph (⌘G)"
           >
             ⌘G
+          </button>
+          <button
+            onClick={() => setShowConventions((v) => !v)}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              showConventions
+                ? 'bg-blue-900 text-blue-200'
+                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="Conventions (⌘,)"
+          >
+            ⌘,
           </button>
         </div>
       </header>
@@ -323,12 +364,29 @@ export default function Home() {
                 onCancel={() => setPanel('viewer')}
               />
             ) : selectedNote ? (
-              <NoteViewer content={noteContent} slug={selectedNote.slug} />
+              <NoteViewer
+                content={noteContent}
+                slug={selectedNote.slug}
+                onWikilinkClick={handleWikilinkClick}
+              />
             ) : (
               <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-sm text-gray-600">Select a note</p>
-                  <p className="text-xs text-gray-700 mt-1">or press ⌘N to create one</p>
+                <div className="text-center space-y-3">
+                  {notes.length === 0 && !loading ? (
+                    <>
+                      <p className="text-sm text-gray-500 font-medium">Welcome to KnowledgeOS</p>
+                      <div className="text-xs text-gray-600 space-y-1">
+                        <p>1. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘N</kbd> to create your first raw note</p>
+                        <p>2. Select notes and click <span className="text-blue-400">Compile Selected</span> to generate wiki notes</p>
+                        <p>3. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘/</kbd> to chat with your vault</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-600">Select a note</p>
+                      <p className="text-xs text-gray-700">or press ⌘N to create one</p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -381,6 +439,22 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Conventions editor overlay */}
+      {showConventions && (
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-end z-40 pt-12">
+          <aside className="w-96 h-full bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl">
+            <ConventionsEditor
+              onClose={() => setShowConventions(false)}
+              onSaved={(msg) => addToast(msg, 'success')}
+              onError={(msg) => addToast(msg, 'error')}
+            />
+          </aside>
+        </div>
+      )}
+
+      {/* Toast notifications */}
+      <ToastStack toasts={toasts} onDismiss={removeToast} />
 
       {/* Delete confirmation */}
       {deleteConfirm && (
