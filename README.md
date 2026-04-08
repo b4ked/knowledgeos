@@ -130,6 +130,9 @@ Production service files are included here:
 
 - `backend/deploy/knowledgeos-backend.service`
 - `backend/deploy/nginx-knos-api.conf`
+- `backend/deploy/Caddyfile.knos-api`
+
+On `parrytech-vps`, port `80` is already owned by Caddy, so the checked-in Caddy snippet is the better fit there. The nginx config is still included for a clean VPS or for teams not already using Caddy.
 
 ### 4. Secrets
 
