@@ -1,9 +1,8 @@
-import { config } from 'dotenv'
-import { resolve } from 'path'
-
-export function register() {
-  // Force .env.local values to win over any inherited shell environment variables.
-  // This ensures OPENAI_API_KEY / ANTHROPIC_API_KEY from .env.local are always used,
-  // regardless of what the launching shell has set.
-  config({ path: resolve(process.cwd(), '.env.local'), override: true })
+export async function register() {
+  // Only runs in the Node.js runtime (not Edge) — dotenv and path are Node-only
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { config } = await import('dotenv')
+    const { resolve } = await import('path')
+    config({ path: resolve(process.cwd(), '.env.local'), override: true })
+  }
 }
