@@ -1,6 +1,38 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import type { Components } from 'react-markdown'
+
+const mdComponents: Components = {
+  p: ({ children }) => <p className="mb-1.5 leading-relaxed last:mb-0">{children}</p>,
+  h1: ({ children }) => <p className="font-semibold text-gray-100 mb-1">{children}</p>,
+  h2: ({ children }) => <p className="font-semibold text-gray-200 mb-1">{children}</p>,
+  h3: ({ children }) => <p className="font-medium text-gray-200 mb-1">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-1.5 space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-1.5 space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="text-gray-300">{children}</li>,
+  code: ({ children, className }) => {
+    const isBlock = className?.includes('language-')
+    if (isBlock) {
+      return (
+        <pre className="bg-gray-800 rounded p-2 mb-1.5 overflow-x-auto text-xs text-gray-300 whitespace-pre">
+          <code>{children}</code>
+        </pre>
+      )
+    }
+    return <code className="bg-gray-800 text-blue-300 px-0.5 rounded text-xs">{children}</code>
+  },
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-gray-600 pl-3 my-1.5 text-gray-400 italic">{children}</blockquote>
+  ),
+  strong: ({ children }) => <strong className="text-gray-100 font-semibold">{children}</strong>,
+  em: ({ children }) => <em className="text-gray-300 italic">{children}</em>,
+  a: ({ href, children }) => (
+    <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">{children}</a>
+  ),
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -10,9 +42,10 @@ interface Message {
 
 interface ChatPanelProps {
   onSourceClick: (slug: string) => void
+  onSourcesUpdate?: (slugs: string[]) => void
 }
 
-export default function ChatPanel({ onSourceClick }: ChatPanelProps) {
+export default function ChatPanel({ onSourceClick, onSourcesUpdate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,6 +63,7 @@ export default function ChatPanel({ onSourceClick }: ChatPanelProps) {
 
     setInput('')
     setError(null)
+    onSourcesUpdate?.([])
     setMessages((prev) => [...prev, { role: 'user', content: question }])
     setLoading(true)
 
@@ -47,10 +81,12 @@ export default function ChatPanel({ onSourceClick }: ChatPanelProps) {
         return
       }
 
+      const sources = data.sources ?? []
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: data.answer ?? '', sources: data.sources ?? [] },
+        { role: 'assistant', content: data.answer ?? '', sources },
       ])
+      onSourcesUpdate?.(sources)
     } catch {
       setError('Network error — could not reach query API')
     } finally {
@@ -65,7 +101,7 @@ export default function ChatPanel({ onSourceClick }: ChatPanelProps) {
         <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Chat</span>
         {messages.length > 0 && (
           <button
-            onClick={() => { setMessages([]); setError(null) }}
+            onClick={() => { setMessages([]); setError(null); onSourcesUpdate?.([]) }}
             className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
           >
             Clear
@@ -90,7 +126,13 @@ export default function ChatPanel({ onSourceClick }: ChatPanelProps) {
                   : 'bg-gray-900 text-gray-200'
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+                  {msg.content}
+                </ReactMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
 
               {msg.sources && msg.sources.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-gray-700/50">

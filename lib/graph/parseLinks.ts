@@ -7,6 +7,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: string      // node id
   target: string      // node id
+  label: string       // original wikilink text (display name for the edge)
 }
 
 export interface GraphData {
@@ -70,7 +71,7 @@ export function parseLinks(notes: NoteInput[]): GraphData {
 
       if (edgeKeys.has(edgeKey)) continue
       edgeKeys.add(edgeKey)
-      edges.push({ source: note.slug, target: targetSlug })
+      edges.push({ source: note.slug, target: targetSlug, label: link })
 
       // If target has no matching note, register as stub
       if (!slugMap.has(targetSlug) && !stubIds.has(targetSlug)) {

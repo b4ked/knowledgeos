@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
 import NoteList from '@/components/NoteList'
@@ -31,6 +31,12 @@ export default function Home() {
   const [graphLoading, setGraphLoading] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [showConventions, setShowConventions] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
+  const [chatWidth, setChatWidth] = useState(640)
+  const isResizingChat = useRef(false)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(640)
   const { toasts, addToast, removeToast } = useToast()
 
   const loadNotes = useCallback(async (f: Folder) => {
@@ -67,7 +73,6 @@ export default function Home() {
     setCompileError(null)
   }, [folder, loadNotes])
 
-  // Refresh graph when it's open
   useEffect(() => {
     if (showGraph) loadGraph()
   }, [showGraph, loadGraph])
@@ -167,7 +172,6 @@ export default function Home() {
   }
 
   async function handleWikilinkClick(slug: string) {
-    // Navigate to a wiki note from a [[wikilink]] click inside the viewer
     setFolder('wiki')
     const res = await fetch(`/api/notes/${slug}?folder=wiki`)
     if (res.ok) {
@@ -211,7 +215,6 @@ export default function Home() {
     if (nodeType === 'stub') return
     const targetFolder = nodeType === 'wiki' ? 'wiki' : 'raw'
     if (folder !== targetFolder) setFolder(targetFolder)
-    // Small delay to let folder switch + notes load before selecting
     setTimeout(async () => {
       const res = await fetch(`/api/notes/${nodeId}?folder=${targetFolder}`)
       if (res.ok) {
@@ -229,6 +232,22 @@ export default function Home() {
       }
     }, 150)
   }
+
+  // Chat resize drag
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isResizingChat.current) return
+      const delta = resizeStartX.current - e.clientX
+      setChatWidth(Math.max(280, Math.min(960, resizeStartWidth.current + delta)))
+    }
+    function onMouseUp() { isResizingChat.current = false }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -258,9 +277,7 @@ export default function Home() {
           <button
             onClick={() => setShowChat((v) => !v)}
             className={`px-2 py-1 text-xs rounded transition-colors ${
-              showChat
-                ? 'bg-blue-900 text-blue-200'
-                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+              showChat ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Toggle chat (⌘/)"
           >
@@ -269,9 +286,7 @@ export default function Home() {
           <button
             onClick={() => setShowGraph((v) => !v)}
             className={`px-2 py-1 text-xs rounded transition-colors ${
-              showGraph
-                ? 'bg-blue-900 text-blue-200'
-                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+              showGraph ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Toggle graph (⌘G)"
           >
@@ -280,9 +295,7 @@ export default function Home() {
           <button
             onClick={() => setShowConventions((v) => !v)}
             className={`px-2 py-1 text-xs rounded transition-colors ${
-              showConventions
-                ? 'bg-blue-900 text-blue-200'
-                : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+              showConventions ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Conventions (⌘,)"
           >
@@ -293,134 +306,144 @@ export default function Home() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
+
+        {/* Sidebar collapse strip — shown when sidebar is hidden */}
+        {!sidebarOpen && (
+          <div className="w-8 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-3 shrink-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="text-gray-500 hover:text-gray-200 transition-colors"
+              title="Show sidebar"
+            >
+              ›
+            </button>
+          </div>
+        )}
+
         {/* Sidebar */}
-        <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h1 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</h1>
-          </div>
-
-          <div className="flex gap-1 px-3 py-2 border-b border-gray-800">
-            {(['raw', 'wiki'] as Folder[]).map((f) => (
+        {sidebarOpen && (
+          <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+            <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+              <h1 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</h1>
               <button
-                key={f}
-                onClick={() => setFolder(f)}
-                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  folder === f
-                    ? 'bg-gray-800 text-gray-100'
-                    : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
-                }`}
+                onClick={() => setSidebarOpen(false)}
+                className="text-gray-600 hover:text-gray-300 transition-colors text-sm leading-none"
+                title="Hide sidebar"
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {loading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-xs text-gray-600">Loading…</p>
-            </div>
-          ) : (
-            <NoteList
-              notes={notes}
-              selectedSlug={selectedNote?.slug ?? null}
-              onSelect={handleSelectNote}
-              onDelete={handleDeleteNote}
-              checkable={folder === 'raw'}
-              checked={checkedSlugs}
-              onCheck={handleCheck}
-            />
-          )}
-
-          {folder === 'raw' && (
-            <div className="shrink-0 px-3 py-2 border-t border-gray-800">
-              {compileError && (
-                <p className="text-xs text-red-400 mb-2 truncate" title={compileError}>
-                  {compileError}
-                </p>
-              )}
-              <button
-                onClick={handleCompile}
-                disabled={checkedSlugs.size === 0 || compiling}
-                className="w-full px-3 py-2 text-xs font-medium rounded transition-colors bg-blue-900 text-blue-200 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {compiling
-                  ? 'Compiling…'
-                  : checkedSlugs.size > 0
-                  ? `Compile Selected (${checkedSlugs.size})`
-                  : 'Compile Selected'}
+                ‹
               </button>
             </div>
-          )}
-        </aside>
 
-        {/* Main area — viewer + optional graph panel */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Viewer / New note panel */}
-          <main className="flex-1 bg-gray-950 overflow-hidden flex flex-col min-w-0">
-            {panel === 'new' ? (
-              <NewNotePanel
-                defaultFolder={folder}
-                onSave={handleNoteSaved}
-                onCancel={() => setPanel('viewer')}
-              />
-            ) : selectedNote ? (
-              <NoteViewer
-                content={noteContent}
-                slug={selectedNote.slug}
-                onWikilinkClick={handleWikilinkClick}
-              />
-            ) : (
+            <div className="flex gap-1 px-3 py-2 border-b border-gray-800">
+              {(['raw', 'wiki'] as Folder[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFolder(f)}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                    folder === f
+                      ? 'bg-gray-800 text-gray-100'
+                      : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {loading ? (
               <div className="flex-1 flex items-center justify-center">
-                <div className="text-center space-y-3">
-                  {notes.length === 0 && !loading ? (
-                    <>
-                      <p className="text-sm text-gray-500 font-medium">Welcome to KnowledgeOS</p>
-                      <div className="text-xs text-gray-600 space-y-1">
-                        <p>1. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘N</kbd> to create your first raw note</p>
-                        <p>2. Select notes and click <span className="text-blue-400">Compile Selected</span> to generate wiki notes</p>
-                        <p>3. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘/</kbd> to chat with your vault</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm text-gray-600">Select a note</p>
-                      <p className="text-xs text-gray-700">or press ⌘N to create one</p>
-                    </>
-                  )}
-                </div>
+                <p className="text-xs text-gray-600">Loading…</p>
+              </div>
+            ) : (
+              <NoteList
+                notes={notes}
+                selectedSlug={selectedNote?.slug ?? null}
+                onSelect={handleSelectNote}
+                onDelete={handleDeleteNote}
+                checkable={folder === 'raw'}
+                checked={checkedSlugs}
+                onCheck={handleCheck}
+              />
+            )}
+
+            {folder === 'raw' && (
+              <div className="shrink-0 px-3 py-2 border-t border-gray-800">
+                {compileError && (
+                  <p className="text-xs text-red-400 mb-2 truncate" title={compileError}>
+                    {compileError}
+                  </p>
+                )}
+                <button
+                  onClick={handleCompile}
+                  disabled={checkedSlugs.size === 0 || compiling}
+                  className="w-full px-3 py-2 text-xs font-medium rounded transition-colors bg-blue-900 text-blue-200 hover:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {compiling
+                    ? 'Compiling…'
+                    : checkedSlugs.size > 0
+                    ? `Compile Selected (${checkedSlugs.size})`
+                    : 'Compile Selected'}
+                </button>
               </div>
             )}
-          </main>
+          </aside>
+        )}
 
-          {/* Chat panel */}
-          {showChat && (
-            <aside className="w-80 bg-gray-950 border-l border-gray-800 flex flex-col shrink-0">
-              <ChatPanel onSourceClick={handleChatSourceClick} />
-            </aside>
+        {/* Main content area */}
+        <div className="flex flex-1 overflow-hidden min-w-0">
+
+          {/* Note viewer — hidden when graph is open */}
+          {!showGraph && (
+            <main className="flex-1 bg-gray-950 overflow-hidden flex flex-col min-w-0">
+              {panel === 'new' ? (
+                <NewNotePanel
+                  defaultFolder={folder}
+                  onSave={handleNoteSaved}
+                  onCancel={() => setPanel('viewer')}
+                />
+              ) : selectedNote ? (
+                <NoteViewer
+                  content={noteContent}
+                  slug={selectedNote.slug}
+                  onWikilinkClick={handleWikilinkClick}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center space-y-3">
+                    {notes.length === 0 && !loading ? (
+                      <>
+                        <p className="text-sm text-gray-500 font-medium">Welcome to KnowledgeOS</p>
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <p>1. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘N</kbd> to create your first raw note</p>
+                          <p>2. Select notes and click <span className="text-blue-400">Compile Selected</span> to generate wiki notes</p>
+                          <p>3. Press <kbd className="bg-gray-800 px-1 py-0.5 rounded text-gray-400">⌘/</kbd> to chat with your vault</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-600">Select a note</p>
+                        <p className="text-xs text-gray-700">or press ⌘N to create one</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </main>
           )}
 
-          {/* Graph panel */}
+          {/* Graph panel — flex-1 when open, sits beside chat */}
           {showGraph && (
-            <aside className="w-96 bg-gray-950 border-l border-gray-800 flex flex-col shrink-0">
+            <aside className="flex-1 bg-gray-950 flex flex-col min-w-0">
               <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between shrink-0">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                  Graph
-                </span>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> wiki
-                    <span className="w-2 h-2 rounded-full bg-orange-500 inline-block ml-1" /> raw
-                    <span className="w-2 h-2 rounded-full bg-gray-600 inline-block ml-1" /> stub
-                  </div>
-                  <button
-                    onClick={loadGraph}
-                    disabled={graphLoading}
-                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-                    title="Refresh graph"
-                  >
-                    ↻
-                  </button>
-                </div>
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Graph</span>
+                <button
+                  onClick={loadGraph}
+                  disabled={graphLoading}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+                  title="Refresh graph"
+                >
+                  ↻
+                </button>
               </div>
               <div className="flex-1 overflow-hidden">
                 {graphLoading ? (
@@ -432,8 +455,37 @@ export default function Home() {
                     <p className="text-xs text-gray-600">No notes yet</p>
                   </div>
                 ) : (
-                  <GraphView data={graphData} onNodeClick={handleGraphNodeClick} />
+                  <GraphView
+                    data={graphData}
+                    onNodeClick={handleGraphNodeClick}
+                    highlightedSlugs={highlightedSlugs}
+                  />
                 )}
+              </div>
+            </aside>
+          )}
+
+          {/* Chat panel — resizable, coexists with graph */}
+          {showChat && (
+            <aside
+              className="bg-gray-950 border-l border-gray-800 flex flex-row shrink-0"
+              style={{ width: chatWidth }}
+            >
+              {/* Drag handle */}
+              <div
+                className="w-1 shrink-0 cursor-col-resize bg-gray-800 hover:bg-blue-500 active:bg-blue-400 transition-colors select-none"
+                onMouseDown={(e) => {
+                  isResizingChat.current = true
+                  resizeStartX.current = e.clientX
+                  resizeStartWidth.current = chatWidth
+                  e.preventDefault()
+                }}
+              />
+              <div className="flex-1 flex flex-col min-w-0">
+                <ChatPanel
+                  onSourceClick={handleChatSourceClick}
+                  onSourcesUpdate={(slugs) => setHighlightedSlugs(new Set(slugs))}
+                />
               </div>
             </aside>
           )}
@@ -453,10 +505,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Toast notifications */}
       <ToastStack toasts={toasts} onDismiss={removeToast} />
 
-      {/* Delete confirmation */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-sm w-full mx-4">
