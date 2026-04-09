@@ -2,6 +2,7 @@ import path from 'path'
 import { getAdapter } from '@/lib/vault/getAdapter'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { readStore, upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
+import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 function getVaultPath() {
   return process.env.VAULT_PATH ? path.resolve(process.env.VAULT_PATH) : path.resolve('./vault')
@@ -10,6 +11,8 @@ function getVaultPath() {
 export async function POST(request: Request) {
   const body = await request.json() as { folder?: string }
   const { folder } = body
+
+  if (getVpsConfig()) return proxyToVps('/api/embeddings/index', 'POST', body)
 
   if (folder !== 'raw' && folder !== 'wiki') {
     return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })

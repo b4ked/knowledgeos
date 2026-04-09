@@ -3,6 +3,7 @@ import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { retrieveContext } from '@/lib/embeddings/retrieve'
 import { readMeta } from '@/lib/embeddings/store'
 import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
+import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 function getVaultPath() {
   return process.env.VAULT_PATH ? path.resolve(process.env.VAULT_PATH) : path.resolve('./vault')
@@ -11,6 +12,8 @@ function getVaultPath() {
 export async function POST(request: Request) {
   const body = await request.json() as { question?: string }
   const { question } = body
+
+  if (getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
 
   if (!question || typeof question !== 'string' || !question.trim()) {
     return Response.json({ error: 'question is required' }, { status: 400 })

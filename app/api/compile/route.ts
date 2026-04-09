@@ -2,6 +2,7 @@ import path from 'path'
 import { compile } from '@/lib/compiler/compile'
 import { readSettings } from '@/lib/vault/settings'
 import type { Conventions } from '@/lib/conventions/types'
+import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -11,6 +12,8 @@ export async function POST(request: Request) {
   }
 
   const { notePaths, outputFilename, conventions } = body
+
+  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
 
   if (!Array.isArray(notePaths) || notePaths.length === 0) {
     return Response.json({ error: 'notePaths must be a non-empty array' }, { status: 400 })
