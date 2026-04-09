@@ -36,7 +36,8 @@ export class RemoteVaultAdapter implements VaultAdapter {
   async readNote(notePath: string): Promise<string> {
     const [folder, ...rest] = notePath.split('/')
     const slug = rest.join('/').replace(/\.md$/, '')
-    const res = await this.req(`/api/notes/${slug}?folder=${folder}`)
+    const encodedSlug = slug.split('/').map(encodeURIComponent).join('/')
+    const res = await this.req(`/api/notes/${encodedSlug}?folder=${folder}`)
     if (!res.ok) throw new Error(`Remote readNote failed: ${res.status}`)
     const data = await res.json() as { content: string }
     return data.content
@@ -55,7 +56,8 @@ export class RemoteVaultAdapter implements VaultAdapter {
   async deleteNote(notePath: string): Promise<void> {
     const [folder, ...rest] = notePath.split('/')
     const slug = rest.join('/').replace(/\.md$/, '')
-    const res = await this.req(`/api/notes/${slug}?folder=${folder}`, { method: 'DELETE' })
+    const encodedSlug = slug.split('/').map(encodeURIComponent).join('/')
+    const res = await this.req(`/api/notes/${encodedSlug}?folder=${folder}`, { method: 'DELETE' })
     if (!res.ok && res.status !== 404) throw new Error(`Remote deleteNote failed: ${res.status}`)
   }
 }

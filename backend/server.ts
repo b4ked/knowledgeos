@@ -272,6 +272,17 @@ app.delete('/api/embeddings/clear', async (_req, res) => {
   }
 })
 
+app.get('/api/embeddings/list', async (_req, res) => {
+  const vaultPath = getVaultPath()
+  try {
+    const [store, meta] = await Promise.all([readStore(vaultPath), readMeta(vaultPath)])
+    const slugs = Object.keys(store).sort()
+    res.json({ slugs, meta })
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to read embeddings' })
+  }
+})
+
 // ── Conventions ───────────────────────────────────────────────────────────────
 
 app.get('/api/conventions', async (_req, res) => {
