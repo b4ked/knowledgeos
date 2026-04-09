@@ -10,6 +10,7 @@ import GraphView from '@/components/GraphView'
 import ChatPanel from '@/components/ChatPanel'
 import ConventionsEditor from '@/components/ConventionsEditor'
 import SettingsModal from '@/components/SettingsModal'
+import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
 import { useToast } from '@/lib/toast/useToast'
 
@@ -33,6 +34,7 @@ export default function Home() {
   const [showChat, setShowChat] = useState(false)
   const [showConventions, setShowConventions] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showRAG, setShowRAG] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(640)
@@ -292,47 +294,54 @@ export default function Home() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 h-12 shrink-0">
         <span className="text-sm font-semibold tracking-wide text-gray-100">KnowledgeOS</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setPanel('new')}
-            className="px-2 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="New note (⌘N)"
           >
-            ⌘N
+            New Note
           </button>
           <button
             onClick={() => setShowChat((v) => !v)}
-            className={`px-2 py-1 text-xs rounded transition-colors ${
+            className={`px-3 py-1 text-xs rounded transition-colors ${
               showChat ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Toggle chat (⌘/)"
           >
-            ⌘/
+            Chat
           </button>
           <button
             onClick={toggleGraph}
-            className={`px-2 py-1 text-xs rounded transition-colors ${
+            className={`px-3 py-1 text-xs rounded transition-colors ${
               showGraph ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Toggle graph (⌘G)"
           >
-            ⌘G
+            Graph
           </button>
           <button
             onClick={() => setShowConventions((v) => !v)}
-            className={`px-2 py-1 text-xs rounded transition-colors ${
+            className={`px-3 py-1 text-xs rounded transition-colors ${
               showConventions ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
             title="Conventions (⌘,)"
           >
-            ⌘,
+            Conventions
+          </button>
+          <button
+            onClick={() => setShowRAG(true)}
+            className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            title="RAG index"
+          >
+            RAG
           </button>
           <button
             onClick={() => setShowSettings(true)}
-            className="px-2 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="Settings"
           >
-            ⚙
+            Settings
           </button>
         </div>
       </header>
@@ -546,6 +555,9 @@ export default function Home() {
           onError={(msg) => addToast(msg, 'error')}
         />
       )}
+
+      {/* RAG index panel */}
+      {showRAG && <RAGPanel onClose={() => setShowRAG(false)} />}
 
       <ToastStack toasts={toasts} onDismiss={removeToast} />
 

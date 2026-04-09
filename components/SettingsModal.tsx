@@ -9,8 +9,21 @@ interface SettingsModalProps {
 }
 
 interface Settings {
-  rawPath: string
-  wikiPath: string
+  rawPath?: string
+  wikiPath?: string
+}
+
+interface TokeniseResult {
+  indexed: number
+  skipped: number
+  total: number
+  errors: string[]
+}
+
+interface FolderTokeniseState {
+  status: 'idle' | 'running' | 'done' | 'error'
+  result?: TokeniseResult
+  error?: string
 }
 
 export default function SettingsModal({ onClose, onSaved, onError }: SettingsModalProps) {
@@ -18,6 +31,8 @@ export default function SettingsModal({ onClose, onSaved, onError }: SettingsMod
   const [wikiPath, setWikiPath] = useState('')
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [rawTokenise, setRawTokenise] = useState<FolderTokeniseState>({ status: 'idle' })
+  const [wikiTokenise, setWikiTokenise] = useState<FolderTokeniseState>({ status: 'idle' })
 
   useEffect(() => {
     fetch('/api/settings')
@@ -51,6 +66,60 @@ export default function SettingsModal({ onClose, onSaved, onError }: SettingsMod
     }
   }
 
+  async function handleTokenise(folder: 'raw' | 'wiki') {
+    const setState = folder === 'raw' ? setRawTokenise : setWikiTokenise
+    setState({ status: 'running' })
+    try {
+      const res = await fetch('/api/embeddings/index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder }),
+      })
+      const data = await res.json() as TokeniseResult & { error?: string }
+      if (!res.ok) {
+        setState({ status: 'error', error: data.error ?? 'Tokenisation failed' })
+      } else {
+        setState({ status: 'done', result: data })
+      }
+    } catch {
+      setState({ status: 'error', error: 'Network error' })
+    }
+  }
+
+  function TokeniseButton({ folder }: { folder: 'raw' | 'wiki' }) {
+    const state = folder === 'raw' ? rawTokenise : wikiTokenise
+    const color = folder === 'raw' ? 'text-red-400' : 'text-blue-400'
+
+    return (
+      <div className="mt-2">
+        <button
+          onClick={() => handleTokenise(folder)}
+          disabled={state.status === 'running'}
+          className="px-3 py-1.5 text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors border border-gray-700"
+        >
+          {state.status === 'running' ? 'Tokenising…' : 'Tokenise for RAG'}
+        </button>
+
+        {state.status === 'done' && state.result && (
+          <p className={`text-xs mt-1.5 ${color}`}>
+            {state.result.indexed > 0
+              ? `✓ ${state.result.indexed} new file${state.result.indexed !== 1 ? 's' : ''} indexed`
+              : '✓ All files already indexed'}
+            {state.result.skipped > 0 && (
+              <span className="text-gray-500"> · {state.result.skipped} skipped</span>
+            )}
+            {state.result.errors.length > 0 && (
+              <span className="text-red-400"> · {state.result.errors.length} error{state.result.errors.length !== 1 ? 's' : ''}</span>
+            )}
+          </p>
+        )}
+        {state.status === 'error' && (
+          <p className="text-xs mt-1.5 text-red-400">{state.error}</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 w-full max-w-lg mx-4 shadow-2xl">
@@ -78,8 +147,9 @@ export default function SettingsModal({ onClose, onSaved, onError }: SettingsMod
                 <code className="bg-gray-800 px-0.5 rounded text-gray-400">VAULT_PATH/wiki</code> directories.
               </p>
 
-              <div className="space-y-4">
-                <div>
+              <div className="space-y-5">
+                {/* Raw */}
+                <div className="border border-gray-800 rounded-lg p-4">
                   <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
                     Raw notes folder
@@ -91,9 +161,11 @@ export default function SettingsModal({ onClose, onSaved, onError }: SettingsMod
                     placeholder="/Users/you/notes/raw"
                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
                   />
+                  <TokeniseButton folder="raw" />
                 </div>
 
-                <div>
+                {/* Wiki */}
+                <div className="border border-gray-800 rounded-lg p-4">
                   <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
                     Wiki notes folder
@@ -105,6 +177,7 @@ export default function SettingsModal({ onClose, onSaved, onError }: SettingsMod
                     placeholder="/Users/you/notes/wiki"
                     className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
                   />
+                  <TokeniseButton folder="wiki" />
                 </div>
               </div>
             </section>
