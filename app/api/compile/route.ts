@@ -1,5 +1,6 @@
 import path from 'path'
 import { compile } from '@/lib/compiler/compile'
+import { readSettings } from '@/lib/vault/settings'
 import type { Conventions } from '@/lib/conventions/types'
 
 export async function POST(request: Request) {
@@ -19,8 +20,12 @@ export async function POST(request: Request) {
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')
 
+  const settings = await readSettings()
+  const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
+  const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
+
   try {
-    const result = await compile(notePaths, outputFilename, vaultPath, conventions ?? {})
+    const result = await compile(notePaths, outputFilename, vaultPath, conventions ?? {}, rawPath, wikiPath)
     return Response.json(result, { status: 200 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Compilation failed'

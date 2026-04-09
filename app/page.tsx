@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
-import NoteList from '@/components/NoteList'
+import FolderTree from '@/components/FolderTree'
 import NoteViewer from '@/components/NoteViewer'
 import NewNotePanel from '@/components/NewNotePanel'
 import GraphView from '@/components/GraphView'
 import ChatPanel from '@/components/ChatPanel'
 import ConventionsEditor from '@/components/ConventionsEditor'
+import SettingsModal from '@/components/SettingsModal'
 import ToastStack from '@/components/ToastStack'
 import { useToast } from '@/lib/toast/useToast'
 
@@ -31,6 +32,7 @@ export default function Home() {
   const [graphLoading, setGraphLoading] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [showConventions, setShowConventions] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(640)
@@ -77,7 +79,26 @@ export default function Home() {
     if (showGraph) loadGraph()
   }, [showGraph, loadGraph])
 
+  // Open graph: close note viewer
+  function openGraph() {
+    setShowGraph(true)
+    setSelectedNote(null)
+    setNoteContent('')
+    setPanel('viewer')
+  }
+
+  function closeGraph() {
+    setShowGraph(false)
+  }
+
+  function toggleGraph() {
+    if (showGraph) closeGraph()
+    else openGraph()
+  }
+
   async function handleSelectNote(note: NoteMetadata) {
+    // Close graph when note is selected from sidebar
+    setShowGraph(false)
     setSelectedNote(note)
     setPanel('viewer')
     const res = await fetch(`/api/notes/${note.slug}?folder=${note.folder}`)
@@ -153,6 +174,7 @@ export default function Home() {
         const wikiRes = await fetch(`/api/notes/${data.slug}?folder=wiki`)
         if (wikiRes.ok) {
           const { content } = await wikiRes.json()
+          setShowGraph(false)
           setSelectedNote({
             slug: data.slug,
             filename: `${data.slug}.md`,
@@ -173,6 +195,7 @@ export default function Home() {
 
   async function handleWikilinkClick(slug: string) {
     setFolder('wiki')
+    setShowGraph(false)
     const res = await fetch(`/api/notes/${slug}?folder=wiki`)
     if (res.ok) {
       const { content } = await res.json()
@@ -193,6 +216,7 @@ export default function Home() {
 
   async function handleChatSourceClick(slug: string) {
     setFolder('wiki')
+    setShowGraph(false)
     setTimeout(async () => {
       const res = await fetch(`/api/notes/${slug}?folder=wiki`)
       if (res.ok) {
@@ -219,6 +243,7 @@ export default function Home() {
       const res = await fetch(`/api/notes/${nodeId}?folder=${targetFolder}`)
       if (res.ok) {
         const { content } = await res.json()
+        setShowGraph(false)
         setSelectedNote({
           slug: nodeId,
           filename: `${nodeId}.md`,
@@ -253,13 +278,14 @@ export default function Home() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.metaKey && e.key === 'n') { e.preventDefault(); setPanel('new') }
-      if (e.metaKey && e.key === 'g') { e.preventDefault(); setShowGraph((v) => !v) }
+      if (e.metaKey && e.key === 'g') { e.preventDefault(); toggleGraph() }
       if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
       if (e.metaKey && e.key === ',') { e.preventDefault(); setShowConventions((v) => !v) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGraph])
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
@@ -284,7 +310,7 @@ export default function Home() {
             ⌘/
           </button>
           <button
-            onClick={() => setShowGraph((v) => !v)}
+            onClick={toggleGraph}
             className={`px-2 py-1 text-xs rounded transition-colors ${
               showGraph ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
@@ -301,13 +327,20 @@ export default function Home() {
           >
             ⌘,
           </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="px-2 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            title="Settings"
+          >
+            ⚙
+          </button>
         </div>
       </header>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Sidebar collapse strip — shown when sidebar is hidden */}
+        {/* Sidebar collapse strip */}
         {!sidebarOpen && (
           <div className="w-8 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-3 shrink-0">
             <button
@@ -355,7 +388,7 @@ export default function Home() {
                 <p className="text-xs text-gray-600">Loading…</p>
               </div>
             ) : (
-              <NoteList
+              <FolderTree
                 notes={notes}
                 selectedSlug={selectedNote?.slug ?? null}
                 onSelect={handleSelectNote}
@@ -431,7 +464,7 @@ export default function Home() {
             </main>
           )}
 
-          {/* Graph panel — flex-1 when open, sits beside chat */}
+          {/* Graph panel */}
           {showGraph && (
             <aside className="flex-1 bg-gray-950 flex flex-col min-w-0">
               <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between shrink-0">
@@ -503,6 +536,15 @@ export default function Home() {
             />
           </aside>
         </div>
+      )}
+
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onSaved={(msg) => addToast(msg, 'success')}
+          onError={(msg) => addToast(msg, 'error')}
+        />
       )}
 
       <ToastStack toasts={toasts} onDismiss={removeToast} />

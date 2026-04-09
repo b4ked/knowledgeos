@@ -1,12 +1,4 @@
-import path from 'path'
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
-
-function getAdapter() {
-  const vaultPath = process.env.VAULT_PATH
-    ? path.resolve(process.env.VAULT_PATH)
-    : path.resolve('./vault')
-  return new LocalVaultAdapter(vaultPath)
-}
+import { getAdapter } from '@/lib/vault/getAdapter'
 
 export async function GET(request: Request) {
   const folder = new URL(request.url).searchParams.get('folder') as 'raw' | 'wiki' | null
@@ -14,7 +6,7 @@ export async function GET(request: Request) {
     return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
   }
 
-  const adapter = getAdapter()
+  const adapter = await getAdapter()
   await adapter.ensureDirectories()
   const notes = await adapter.listNotes(folder)
   return Response.json(notes)
@@ -37,7 +29,7 @@ export async function POST(request: Request) {
   const safeFilename = filename.endsWith('.md') ? filename : `${filename}.md`
   const notePath = `${folder}/${safeFilename}`
 
-  const adapter = getAdapter()
+  const adapter = await getAdapter()
   await adapter.ensureDirectories()
   await adapter.writeNote(notePath, content)
 

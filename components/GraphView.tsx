@@ -49,7 +49,7 @@ export default function GraphView({ data, onNodeClick, highlightedSlugs }: Graph
   const centerStrengthRef = useRef(0.15)
 
   const [visibleTypes, setVisibleTypes] = useState<Set<NodeType>>(
-    new Set(['wiki', 'raw', 'stub'])
+    new Set(['wiki', 'stub'])
   )
   const [centerStrength, setCenterStrength] = useState(0.25)
 

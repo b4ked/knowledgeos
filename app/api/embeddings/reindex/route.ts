@@ -1,6 +1,6 @@
 import path from 'path'
+import { getAdapter } from '@/lib/vault/getAdapter'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
 import { upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
 
 export async function POST() {
@@ -8,7 +8,7 @@ export async function POST() {
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')
 
-  const adapter = new LocalVaultAdapter(vaultPath)
+  const adapter = await getAdapter()
   const llm = getLLMProvider()
   const provider = process.env.LLM_PROVIDER ?? 'anthropic'
   const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'

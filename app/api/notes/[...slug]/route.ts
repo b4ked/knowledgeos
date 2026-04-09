@@ -1,25 +1,18 @@
-import path from 'path'
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
-
-function getAdapter() {
-  const vaultPath = process.env.VAULT_PATH
-    ? path.resolve(process.env.VAULT_PATH)
-    : path.resolve('./vault')
-  return new LocalVaultAdapter(vaultPath)
-}
+import { getAdapter } from '@/lib/vault/getAdapter'
 
 export async function GET(
   request: Request,
-  ctx: { params: Promise<{ slug: string }> }
+  ctx: { params: Promise<{ slug: string[] }> }
 ) {
-  const { slug } = await ctx.params
+  const { slug: slugParts } = await ctx.params
+  const slug = slugParts.join('/')
   const folder = new URL(request.url).searchParams.get('folder') as 'raw' | 'wiki' | null
   if (folder !== 'raw' && folder !== 'wiki') {
     return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
   }
 
   const notePath = `${folder}/${slug}.md`
-  const adapter = getAdapter()
+  const adapter = await getAdapter()
 
   try {
     const content = await adapter.readNote(notePath)
@@ -31,16 +24,17 @@ export async function GET(
 
 export async function DELETE(
   request: Request,
-  ctx: { params: Promise<{ slug: string }> }
+  ctx: { params: Promise<{ slug: string[] }> }
 ) {
-  const { slug } = await ctx.params
+  const { slug: slugParts } = await ctx.params
+  const slug = slugParts.join('/')
   const folder = new URL(request.url).searchParams.get('folder') as 'raw' | 'wiki' | null
   if (folder !== 'raw' && folder !== 'wiki') {
     return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
   }
 
   const notePath = `${folder}/${slug}.md`
-  const adapter = getAdapter()
+  const adapter = await getAdapter()
 
   try {
     await adapter.deleteNote(notePath)

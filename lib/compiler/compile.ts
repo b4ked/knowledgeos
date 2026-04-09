@@ -16,13 +16,15 @@ export async function compile(
   notePaths: string[],
   outputFilename: string | undefined,
   vaultPath: string,
-  conventions: Partial<Conventions> = {}
+  conventions: Partial<Conventions> = {},
+  rawPath?: string,
+  wikiPath?: string,
 ): Promise<CompileResult> {
   // merged is used for buildSystemPrompt — defaults fill missing fields
   // getLLMProvider receives only user-supplied conventions so the LLM_PROVIDER
   // env var is not silently shadowed by DEFAULT_CONVENTIONS.provider
   const merged = { ...DEFAULT_CONVENTIONS, ...conventions }
-  const adapter = new LocalVaultAdapter(vaultPath)
+  const adapter = new LocalVaultAdapter(vaultPath, rawPath, wikiPath)
 
   // Load source notes
   const sources = await Promise.all(notePaths.map((p) => adapter.readNote(p)))

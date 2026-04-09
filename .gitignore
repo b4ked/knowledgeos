@@ -41,5 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 # KnowledgeOS — never commit secrets or vault data
-vault/
+/vault/
 CONVENTIONS.json
