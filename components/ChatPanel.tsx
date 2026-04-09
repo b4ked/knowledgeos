@@ -142,8 +142,9 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate }: ChatPanelP
                       key={j}
                       onClick={() => onSourceClick(slug)}
                       className="text-blue-400 hover:text-blue-300 underline mr-2 transition-colors"
+                      title={slug}
                     >
-                      {slug}
+                      {slug.split('/').pop() ?? slug}
                     </button>
                   ))}
                 </div>
