@@ -281,24 +281,34 @@ export default function GraphView({ data, onNodeClick, highlightedSlugs }: Graph
 
   // ── Highlight effect ────────────────────────────────────────────────────────
   // Purely visual — fills nodes yellow, no simulation touch.
+  // Also highlights any stub nodes connected FROM a highlighted source.
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
+
+    // Extend highlight: include stubs reachable from highlighted sources
+    const extended = new Set(highlightedSlugs ?? [])
+    if (highlightedSlugs && highlightedSlugs.size > 0) {
+      for (const edge of data.edges) {
+        if (highlightedSlugs.has(edge.source)) extended.add(edge.target)
+      }
+    }
+
     d3.select(svg)
       .selectAll<SVGCircleElement, SimNode>('circle')
       .attr('fill', (d) =>
-        highlightedSlugs?.has(d.id) ? '#fbbf24' : NODE_COLOR[d.type]
+        extended.has(d.id) ? '#fbbf24' : NODE_COLOR[d.type]
       )
       .attr('stroke', (d) =>
-        highlightedSlugs?.has(d.id) ? '#fbbf24' : '#111827'
+        extended.has(d.id) ? '#fbbf24' : '#111827'
       )
       .attr('stroke-width', (d) =>
-        highlightedSlugs?.has(d.id) ? 3 : 1.5
+        extended.has(d.id) ? 3 : 1.5
       )
       .attr('filter', (d) =>
-        highlightedSlugs?.has(d.id) ? 'url(#highlight-glow)' : null
+        extended.has(d.id) ? 'url(#highlight-glow)' : null
       )
-  }, [highlightedSlugs])
+  }, [highlightedSlugs, data.edges])
 
   return (
     <div className="flex flex-col h-full">

@@ -40,60 +40,100 @@ export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
     setSelectedPresetSource('custom')
     try {
       const res = await fetch(`/api/presets/${encodeURIComponent(name)}`)
-      if (res.ok) {
-        setSelectedConventions(await res.json() as Partial<Conventions>)
-      }
+      if (res.ok) setSelectedConventions(await res.json() as Partial<Conventions>)
     } catch { /* silent */ }
   }
 
   async function handleSave() {
-    if (!filename.trim()) { setError('Filename is required'); return }
     if (!content.trim()) { setError('Content is required'); return }
 
     setSaving(true)
     setError(null)
 
     try {
-      // 1. Save raw note
-      setStatus('Saving raw note…')
-      const rawRes = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: 'raw', filename: filename.trim(), content }),
-      })
-      if (!rawRes.ok) {
-        const data = await rawRes.json()
-        setError(data.error ?? 'Failed to save raw note')
-        return
-      }
-      const rawNote = await rawRes.json() as NoteMetadata
+      const providedName = filename.trim()
 
-      // 2. Compile to wiki
-      setStatus('Compiling to wiki…')
-      const compileRes = await fetch('/api/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notePaths: [rawNote.path],
-          conventions: selectedConventions,
-        }),
-      })
-      if (!compileRes.ok) {
-        const data = await compileRes.json()
-        setError(data.error ?? 'Compilation failed — raw note was saved')
-        return
-      }
-      const compileResult = await compileRes.json() as { slug: string }
+      if (providedName) {
+        // ── Named flow: user provided a filename ─────────────────────────────
+        // 1. Save raw note as {name}-raw.md
+        setStatus('Saving raw note…')
+        const rawRes = await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: 'raw', filename: `${providedName}-raw`, content }),
+        })
+        if (!rawRes.ok) {
+          const d = await rawRes.json()
+          setError(d.error ?? 'Failed to save raw note')
+          return
+        }
+        const rawNote = await rawRes.json() as NoteMetadata
 
-      // 3. Return wiki note to parent
-      onSave({
-        slug: compileResult.slug,
-        filename: `${compileResult.slug}.md`,
-        folder: 'wiki',
-        path: `wiki/${compileResult.slug}.md`,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
+        // 2. Compile raw → wiki/{name}.md
+        setStatus('Compiling to wiki…')
+        const compileRes = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notePaths: [rawNote.path],
+            outputFilename: providedName,
+            conventions: selectedConventions,
+          }),
+        })
+        if (!compileRes.ok) {
+          const d = await compileRes.json()
+          setError(d.error ?? 'Compilation failed — raw note was saved')
+          return
+        }
+        const { slug } = await compileRes.json() as { slug: string }
+        onSave({ slug, filename: `${slug}.md`, folder: 'wiki', path: `wiki/${slug}.md`, createdAt: new Date(), updatedAt: new Date() })
+
+      } else {
+        // ── Auto-name flow: LLM picks the name ──────────────────────────────
+        // 1. Save content to a temp raw note so compile can read it
+        const tempName = `_temp-${Date.now()}`
+        setStatus('Saving draft…')
+        const tempRes = await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: 'raw', filename: tempName, content }),
+        })
+        if (!tempRes.ok) {
+          const d = await tempRes.json()
+          setError(d.error ?? 'Failed to save draft')
+          return
+        }
+        const tempNote = await tempRes.json() as NoteMetadata
+
+        // 2. Compile — LLM generates slug from content
+        setStatus('Compiling…')
+        const compileRes = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notePaths: [tempNote.path], conventions: selectedConventions }),
+        })
+        if (!compileRes.ok) {
+          const d = await compileRes.json()
+          // Clean up temp note best-effort
+          await fetch(`/api/notes/${encodeURIComponent(tempName)}?folder=raw`, { method: 'DELETE' }).catch(() => {})
+          setError(d.error ?? 'Compilation failed')
+          return
+        }
+        const { slug } = await compileRes.json() as { slug: string }
+
+        // 3. Save properly-named raw note as {slug}-raw.md
+        setStatus('Saving raw note…')
+        await fetch('/api/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder: 'raw', filename: `${slug}-raw`, content }),
+        })
+
+        // 4. Clean up temp note
+        await fetch(`/api/notes/${encodeURIComponent(tempName)}?folder=raw`, { method: 'DELETE' }).catch(() => {})
+
+        onSave({ slug, filename: `${slug}.md`, folder: 'wiki', path: `wiki/${slug}.md`, createdAt: new Date(), updatedAt: new Date() })
+      }
     } catch {
       setError('Network error')
     } finally {
@@ -126,7 +166,6 @@ export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
         <div className="flex gap-2 items-start">
           <label className="text-xs text-gray-500 w-20 pt-1 shrink-0">Preset</label>
           <div className="flex flex-wrap gap-1.5">
-            {/* Built-in presets */}
             {Object.keys(BUILT_IN_PRESETS).map((key) => (
               <button
                 key={`builtin-${key}`}
@@ -140,7 +179,6 @@ export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
                 {key}
               </button>
             ))}
-            {/* Custom presets */}
             {customPresets.map((name) => (
               <button
                 key={`custom-${name}`}
@@ -160,13 +198,18 @@ export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
         {/* Filename */}
         <div className="flex gap-2 items-start">
           <label className="text-xs text-gray-500 w-20 pt-1.5 shrink-0">Filename</label>
-          <input
-            type="text"
-            value={filename}
-            onChange={(e) => setFilename(e.target.value)}
-            placeholder="my-note (without .md)"
-            className="flex-1 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
-          />
+          <div className="flex-1">
+            <input
+              type="text"
+              value={filename}
+              onChange={(e) => setFilename(e.target.value)}
+              placeholder="my-note (optional)"
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+            />
+            <p className="mt-1 text-xs text-gray-700">
+              Leave blank to use naming convention from preset. Raw note will be saved as <span className="text-gray-600 font-mono">name-raw.md</span>.
+            </p>
+          </div>
         </div>
 
         {/* Content */}
