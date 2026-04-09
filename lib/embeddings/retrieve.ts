@@ -1,4 +1,4 @@
-import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
+import { getAdapter } from '@/lib/vault/getAdapter'
 import { cosineSimilarity } from './cosine'
 import { readStore } from './store'
 import type { LLMProvider } from '@/lib/llm/LLMProvider'
@@ -21,7 +21,7 @@ export async function retrieveContext(
   if (Object.keys(store).length === 0) return []
 
   const questionEmbedding = await llm.embed(question)
-  const adapter = new LocalVaultAdapter(vaultPath)
+  const adapter = await getAdapter()
 
   const scored = Object.entries(store)
     .map(([slug, vec]) => ({ slug, score: cosineSimilarity(questionEmbedding, vec) }))
@@ -31,7 +31,11 @@ export async function retrieveContext(
 
   const results = await Promise.all(
     scored.map(async ({ slug, score }) => {
-      const content = await adapter.readNote(`wiki/${slug}.md`).catch(() => '')
+      // Try wiki first, then raw — supports notes tokenised from either folder
+      let content = await adapter.readNote(`wiki/${slug}.md`).catch(() => '')
+      if (!content) {
+        content = await adapter.readNote(`raw/${slug}.md`).catch(() => '')
+      }
       return { slug, content, score }
     })
   )
