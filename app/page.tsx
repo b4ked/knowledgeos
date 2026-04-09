@@ -10,9 +10,12 @@ import GraphView from '@/components/GraphView'
 import ChatPanel from '@/components/ChatPanel'
 import ConventionsEditor from '@/components/ConventionsEditor'
 import SettingsModal from '@/components/SettingsModal'
+import VaultModeBanner from '@/components/VaultModeBanner'
 import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
 import { useToast } from '@/lib/toast/useToast'
+import type { VaultMode } from '@/components/VaultModeBanner'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -36,6 +39,8 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
+  const browserAdapterRef = useRef<BrowserVaultAdapter | null>(null)
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(640)
   const isResizingChat = useRef(false)
@@ -43,30 +48,64 @@ export default function Home() {
   const resizeStartWidth = useRef(640)
   const { toasts, addToast, removeToast } = useToast()
 
+  function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
+    browserAdapterRef.current = adapter ?? null
+    setVaultMode(mode)
+  }
+
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/notes?folder=${f}`)
-      if (res.ok) {
-        const data = await res.json() as NoteMetadata[]
+      if (vaultMode === 'local' && browserAdapterRef.current) {
+        const data = await browserAdapterRef.current.listNotes(f)
         setNotes(data)
+      } else {
+        const res = await fetch(`/api/notes?folder=${f}`)
+        if (res.ok) {
+          const data = await res.json() as NoteMetadata[]
+          setNotes(data)
+        }
       }
     } finally {
       setLoading(false)
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultMode])
 
   const loadGraph = useCallback(async () => {
     setGraphLoading(true)
     try {
-      const res = await fetch('/api/graph')
-      if (res.ok) {
-        setGraphData(await res.json() as GraphData)
+      if (vaultMode === 'local' && browserAdapterRef.current) {
+        const adapter = browserAdapterRef.current
+        const [wikiMeta, rawMeta] = await Promise.all([
+          adapter.listNotes('wiki'),
+          adapter.listNotes('raw'),
+        ])
+        const { parseLinks } = await import('@/lib/graph/parseLinks')
+        const [wikiNotes, rawNotes] = await Promise.all([
+          Promise.all(wikiMeta.map(async (m) => ({
+            slug: m.slug,
+            content: await adapter.readNote(m.path).catch(() => ''),
+            type: 'wiki' as const,
+          }))),
+          Promise.all(rawMeta.map(async (m) => ({
+            slug: m.slug,
+            content: await adapter.readNote(m.path).catch(() => ''),
+            type: 'raw' as const,
+          }))),
+        ])
+        setGraphData(parseLinks([...wikiNotes, ...rawNotes]))
+      } else {
+        const res = await fetch('/api/graph')
+        if (res.ok) {
+          setGraphData(await res.json() as GraphData)
+        }
       }
     } finally {
       setGraphLoading(false)
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultMode])
 
   useEffect(() => {
     loadNotes(folder)
@@ -75,7 +114,7 @@ export default function Home() {
     setPanel('viewer')
     setCheckedSlugs(new Set())
     setCompileError(null)
-  }, [folder, loadNotes])
+  }, [folder, loadNotes, vaultMode])
 
   useEffect(() => {
     if (showGraph) loadGraph()
@@ -99,14 +138,18 @@ export default function Home() {
   }
 
   async function handleSelectNote(note: NoteMetadata) {
-    // Close graph when note is selected from sidebar
     setShowGraph(false)
     setSelectedNote(note)
     setPanel('viewer')
-    const res = await fetch(`/api/notes/${note.slug}?folder=${note.folder}`)
-    if (res.ok) {
-      const data = await res.json() as { content: string }
-      setNoteContent(data.content)
+    if (vaultMode === 'local' && browserAdapterRef.current) {
+      const content = await browserAdapterRef.current.readNote(note.path).catch(() => '')
+      setNoteContent(content)
+    } else {
+      const res = await fetch(`/api/notes/${note.slug}?folder=${note.folder}`)
+      if (res.ok) {
+        const data = await res.json() as { content: string }
+        setNoteContent(data.content)
+      }
     }
   }
 
@@ -346,6 +389,11 @@ export default function Home() {
         </div>
       </header>
 
+      <VaultModeBanner
+        mode={vaultMode}
+        onSwitch={() => setShowSettings(true)}
+      />
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
 
@@ -553,6 +601,8 @@ export default function Home() {
           onClose={() => setShowSettings(false)}
           onSaved={(msg) => addToast(msg, 'success')}
           onError={(msg) => addToast(msg, 'error')}
+          vaultMode={vaultMode}
+          onVaultModeChange={handleVaultModeChange}
         />
       )}
 
