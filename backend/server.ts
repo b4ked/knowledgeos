@@ -315,9 +315,67 @@ app.get('/api/settings', async (_req, res) => {
 })
 
 app.post('/api/settings', async (req, res) => {
-  const { rawPath, wikiPath } = req.body as { rawPath?: string; wikiPath?: string }
-  await writeSettings({ rawPath: rawPath || undefined, wikiPath: wikiPath || undefined })
+  const { rawPath, wikiPath, presetsPath } = req.body as { rawPath?: string; wikiPath?: string; presetsPath?: string }
+  await writeSettings({ rawPath: rawPath || undefined, wikiPath: wikiPath || undefined, presetsPath: presetsPath || undefined })
   res.json({ ok: true })
+})
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+
+async function getPresetsPath(): Promise<string> {
+  const settings = await readSettings()
+  return settings.presetsPath
+    ? path.resolve(settings.presetsPath)
+    : path.join(getVaultPath(), 'presets')
+}
+
+app.get('/api/presets', async (_req, res) => {
+  const presetsDir = await getPresetsPath()
+  try {
+    await fs.mkdir(presetsDir, { recursive: true })
+    const files = await fs.readdir(presetsDir)
+    const names = files
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => f.slice(0, -5))
+      .sort()
+    res.json({ names })
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to list presets' })
+  }
+})
+
+app.get('/api/presets/:name', async (req, res) => {
+  const presetsDir = await getPresetsPath()
+  const name = req.params.name.replace(/[^a-zA-Z0-9_\- ]/g, '')
+  try {
+    const raw = await fs.readFile(path.join(presetsDir, `${name}.json`), 'utf-8')
+    res.json(JSON.parse(raw))
+  } catch {
+    res.status(404).json({ error: `Preset not found: ${name}` })
+  }
+})
+
+app.put('/api/presets/:name', async (req, res) => {
+  const presetsDir = await getPresetsPath()
+  const name = req.params.name.replace(/[^a-zA-Z0-9_\- ]/g, '')
+  try {
+    await fs.mkdir(presetsDir, { recursive: true })
+    await fs.writeFile(path.join(presetsDir, `${name}.json`), JSON.stringify(req.body, null, 2), 'utf-8')
+    res.json({ ok: true, name })
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to save preset' })
+  }
+})
+
+app.delete('/api/presets/:name', async (req, res) => {
+  const presetsDir = await getPresetsPath()
+  const name = req.params.name.replace(/[^a-zA-Z0-9_\- ]/g, '')
+  try {
+    await fs.unlink(path.join(presetsDir, `${name}.json`))
+    res.status(204).send()
+  } catch {
+    res.status(404).json({ error: `Preset not found: ${name}` })
+  }
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────

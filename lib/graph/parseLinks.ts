@@ -55,7 +55,7 @@ export function parseLinks(notes: NoteInput[]): GraphData {
 
   const nodes: GraphNode[] = notes.map((n) => ({
     id: n.slug,
-    label: n.slug,
+    label: n.slug.split('/').pop() ?? n.slug,
     type: n.type,
   }))
 

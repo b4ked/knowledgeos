@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import type { Conventions } from '@/lib/conventions/types'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 
-const PRESETS: Record<string, Partial<Conventions>> = {
+const BUILT_IN_PRESETS: Record<string, Partial<Conventions>> = {
   default: {},
   zettelkasten: {
     role: 'Zettelkasten note writer — create atomic, evergreen notes with unique identifiers',
@@ -30,7 +30,7 @@ const PRESETS: Record<string, Partial<Conventions>> = {
 }
 
 const ANTHROPIC_MODELS = ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001']
-const OPENAI_MODELS = ['gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-4o']
+const OPENAI_MODELS = ['gpt-4o', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano']
 
 interface ConventionsEditorProps {
   onClose: () => void
@@ -43,18 +43,64 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [previewPrompt, setPreviewPrompt] = useState(false)
+  const [customPresets, setCustomPresets] = useState<string[]>([])
+  const [savePresetName, setSavePresetName] = useState('')
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [deletingPreset, setDeletingPreset] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/conventions')
-      .then((r) => r.json())
-      .then((data: Conventions) => setForm(data))
-      .catch(() => {/* keep defaults */})
-      .finally(() => setLoading(false))
+    Promise.all([
+      fetch('/api/conventions').then((r) => r.json()).catch(() => DEFAULT_CONVENTIONS),
+      fetch('/api/presets').then((r) => r.json()).catch(() => ({ names: [] })),
+    ]).then(([conventions, presetsData]) => {
+      setForm(conventions as Conventions)
+      setCustomPresets((presetsData as { names: string[] }).names ?? [])
+    }).finally(() => setLoading(false))
   }, [])
 
-  function applyPreset(key: string) {
-    const preset = PRESETS[key]
+  function applyBuiltInPreset(key: string) {
+    const preset = BUILT_IN_PRESETS[key]
     setForm((prev) => ({ ...DEFAULT_CONVENTIONS, ...prev, ...preset }))
+  }
+
+  async function loadCustomPreset(name: string) {
+    const res = await fetch(`/api/presets/${encodeURIComponent(name)}`)
+    if (!res.ok) { onError(`Could not load preset "${name}"`); return }
+    const preset = await res.json() as Partial<Conventions>
+    setForm((prev) => ({ ...prev, ...preset }))
+  }
+
+  async function saveCustomPreset() {
+    const name = savePresetName.trim()
+    if (!name) return
+    setSavingPreset(true)
+    try {
+      const res = await fetch(`/api/presets/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) { onError('Failed to save preset'); return }
+      setCustomPresets((prev) => prev.includes(name) ? prev : [...prev, name].sort())
+      setSavePresetName('')
+      onSaved(`Preset "${name}" saved`)
+    } catch {
+      onError('Network error — could not save preset')
+    } finally {
+      setSavingPreset(false)
+    }
+  }
+
+  async function deleteCustomPreset(name: string) {
+    setDeletingPreset(name)
+    try {
+      await fetch(`/api/presets/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      setCustomPresets((prev) => prev.filter((p) => p !== name))
+    } catch {
+      onError('Network error — could not delete preset')
+    } finally {
+      setDeletingPreset(null)
+    }
   }
 
   function set<K extends keyof Conventions>(key: K, value: Conventions[K]) {
@@ -99,19 +145,64 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-          {/* Presets */}
+          {/* Built-in presets */}
           <div>
-            <label className="block text-xs text-gray-500 mb-1.5">Preset</label>
+            <label className="block text-xs text-gray-500 mb-1.5">Built-in presets</label>
             <div className="flex flex-wrap gap-1.5">
-              {Object.keys(PRESETS).map((key) => (
+              {Object.keys(BUILT_IN_PRESETS).map((key) => (
                 <button
                   key={key}
-                  onClick={() => applyPreset(key)}
+                  onClick={() => applyBuiltInPreset(key)}
                   className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors capitalize"
                 >
                   {key}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Custom presets */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1.5">Custom presets</label>
+            {customPresets.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {customPresets.map((name) => (
+                  <div key={name} className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => loadCustomPreset(name)}
+                      className="px-2 py-1 text-xs rounded-l bg-gray-800 text-amber-300 hover:bg-gray-700 transition-colors"
+                    >
+                      {name}
+                    </button>
+                    <button
+                      onClick={() => deleteCustomPreset(name)}
+                      disabled={deletingPreset === name}
+                      className="px-1.5 py-1 text-xs rounded-r bg-gray-800 text-gray-600 hover:text-red-400 hover:bg-gray-700 transition-colors disabled:opacity-40"
+                      title={`Delete "${name}"`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-700 mb-2">No custom presets yet.</p>
+            )}
+            <div className="flex gap-1.5">
+              <input
+                value={savePresetName}
+                onChange={(e) => setSavePresetName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveCustomPreset()}
+                placeholder="Preset name…"
+                className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              />
+              <button
+                onClick={saveCustomPreset}
+                disabled={!savePresetName.trim() || savingPreset}
+                className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition-colors"
+              >
+                {savingPreset ? 'Saving…' : 'Save as preset'}
+              </button>
             </div>
           </div>
 
@@ -122,7 +213,7 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
               value={form.provider}
               onChange={(e) => {
                 const p = e.target.value as Conventions['provider']
-                const defaultModel = p === 'openai' ? 'gpt-4.1-nano' : 'claude-sonnet-4-6'
+                const defaultModel = p === 'openai' ? 'gpt-4o' : 'claude-sonnet-4-6'
                 setForm((prev) => ({ ...prev, provider: p, compilationModel: defaultModel, queryModel: defaultModel }))
               }}
               className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-gray-500"

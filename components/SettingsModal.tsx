@@ -15,6 +15,7 @@ interface SettingsModalProps {
 interface Settings {
   rawPath?: string
   wikiPath?: string
+  presetsPath?: string
 }
 
 interface TokeniseResult {
@@ -33,6 +34,7 @@ interface FolderTokeniseState {
 export default function SettingsModal({ onClose, onSaved, onError, vaultMode, onVaultModeChange }: SettingsModalProps) {
   const [rawPath, setRawPath] = useState('')
   const [wikiPath, setWikiPath] = useState('')
+  const [presetsPath, setPresetsPath] = useState('')
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [rawTokenise, setRawTokenise] = useState<FolderTokeniseState>({ status: 'idle' })
@@ -47,6 +49,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
       .then((data: Settings) => {
         setRawPath(data.rawPath ?? '')
         setWikiPath(data.wikiPath ?? '')
+        setPresetsPath(data.presetsPath ?? '')
         setLoaded(true)
       })
       .catch(() => setLoaded(true))
@@ -76,7 +79,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawPath: rawPath.trim(), wikiPath: wikiPath.trim() }),
+        body: JSON.stringify({ rawPath: rawPath.trim(), wikiPath: wikiPath.trim(), presetsPath: presetsPath.trim() }),
       })
       if (res.ok) {
         onSaved?.('Settings saved')
@@ -277,6 +280,23 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                     <TokeniseRow folder="wiki" />
                   </div>
                 </div>
+              </section>
+
+              {/* Presets folder */}
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                  Presets Folder
+                </h3>
+                <p className="text-xs text-gray-600 mb-3">
+                  Absolute path to a folder on the server where custom convention presets are stored as JSON files.
+                </p>
+                <input
+                  type="text"
+                  value={presetsPath}
+                  onChange={(e) => setPresetsPath(e.target.value)}
+                  placeholder="/path/to/presets"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
+                />
               </section>
 
               <div className="flex gap-2 justify-end pt-2 border-t border-gray-800">

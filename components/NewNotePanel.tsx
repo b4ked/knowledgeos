@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
 
 interface NewNotePanelProps {
@@ -15,6 +15,18 @@ export default function NewNotePanel({ defaultFolder = 'raw', onSave, onCancel }
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [conventionLabel, setConventionLabel] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/conventions')
+      .then((r) => r.json())
+      .then((data: { provider?: string; compilationModel?: string }) => {
+        if (data.provider && data.compilationModel) {
+          setConventionLabel(`${data.provider} / ${data.compilationModel}`)
+        }
+      })
+      .catch(() => { /* silent */ })
+  }, [])
 
   async function handleSave() {
     if (!filename.trim()) {
@@ -54,7 +66,14 @@ export default function NewNotePanel({ defaultFolder = 'raw', onSave, onCancel }
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-100">New Note</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-medium text-gray-100">New Note</h2>
+          {conventionLabel && (
+            <span className="text-xs text-gray-600 font-mono" title="Active compilation convention">
+              convention: {conventionLabel}
+            </span>
+          )}
+        </div>
         <button
           onClick={onCancel}
           className="text-xs text-gray-500 hover:text-gray-300 transition-colors"

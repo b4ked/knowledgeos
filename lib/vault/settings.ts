@@ -4,6 +4,7 @@ import path from 'path'
 export interface VaultSettings {
   rawPath?: string
   wikiPath?: string
+  presetsPath?: string
 }
 
 function settingsPath(): string {
