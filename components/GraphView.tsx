@@ -135,9 +135,20 @@ export default function GraphView({ data, onNodeClick, highlightedSlugs }: Graph
     const g = root.append('g')
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 6])
+      .scaleExtent([0.05, 6])
       .on('zoom', (event) => g.attr('transform', event.transform.toString()))
     root.call(zoom)
+
+    // Start zoomed out so the spreading graph stays visible as it settles.
+    // Nodes are centred around (width/2, height/2) by the force layout, so we
+    // keep that point on screen but scale down to 0.25×.
+    const initScale = 0.25
+    root.call(
+      zoom.transform,
+      d3.zoomIdentity
+        .translate(width * (1 - initScale) / 2, height * (1 - initScale) / 2)
+        .scale(initScale)
+    )
 
     const simNodes: SimNode[] = filteredNodes.map((n) => ({ ...n }))
     const idMap = new Map(simNodes.map((n) => [n.id, n]))
@@ -226,26 +237,33 @@ export default function GraphView({ data, onNodeClick, highlightedSlugs }: Graph
         .attr('y', (d) => (d.y ?? 0) + 3)
     })
 
-    // Auto-fit to show ~90% of the graph once the simulation settles
-    simulation.on('end', () => {
-      const { width: W, height: H } = dimensionsRef.current
+    // Auto-fit: after 2.5 s the layout is mostly stable. Compute the bounding
+    // box of all nodes at that point and zoom to show ~90% of the structure.
+    function fitToNodes() {
       const xs = simNodes.map((d) => d.x ?? 0)
       const ys = simNodes.map((d) => d.y ?? 0)
+      if (xs.length === 0) return
       const xMin = Math.min(...xs), xMax = Math.max(...xs)
       const yMin = Math.min(...ys), yMax = Math.max(...ys)
-      const pad = 60
+      const { width: W, height: H } = dimensionsRef.current
+      const pad = 80
       const graphW = xMax - xMin + pad * 2
       const graphH = yMax - yMin + pad * 2
-      const scale = Math.min((W / graphW) * 0.9, (H / graphH) * 0.9, 1.5)
+      const scale = Math.min((W / graphW) * 0.9, (H / graphH) * 0.9, 1.2)
       const tx = W / 2 - scale * ((xMin + xMax) / 2)
       const ty = H / 2 - scale * ((yMin + yMax) / 2)
-      root.transition().duration(600).call(
+      root.transition().duration(800).call(
         zoom.transform,
         d3.zoomIdentity.translate(tx, ty).scale(scale)
       )
-    })
+    }
 
-    return () => { simulation.stop() }
+    const fitTimer = setTimeout(fitToNodes, 2500)
+
+    return () => {
+      clearTimeout(fitTimer)
+      simulation.stop()
+    }
   }, [data, visibleTypes]) // ← only data + filter; NOT onNodeClick, NOT highlightedSlugs
 
   // ── Center gravity effect ───────────────────────────────────────────────────
