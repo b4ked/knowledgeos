@@ -1,5 +1,30 @@
 import type { Conventions } from './types'
 
+export const BUILT_IN_PRESETS: Record<string, Partial<Conventions>> = {
+  default: {},
+  zettelkasten: {
+    role: 'Zettelkasten note writer — create atomic, evergreen notes with unique identifiers',
+    outputFormat: 'Single atomic idea per note. ## Idea, ## Evidence, ## Links sections.',
+    wikilinkRules: 'Link to exactly one concept per [[wikilink]]. Prefer atomic concept names.',
+    namingConvention: 'Descriptive phrase slug, e.g. "learning-through-retrieval-practice"',
+    customInstructions: 'Keep each note under 300 words. One idea only.',
+  },
+  academic: {
+    role: 'Academic knowledge synthesiser — create structured literature notes',
+    outputFormat: '## Abstract, ## Methodology, ## Findings, ## Critique, ## Citations sections',
+    wikilinkRules: 'Link author names, theories, and key terms in [[wikilinks]]',
+    namingConvention: 'author-year-keyword, e.g. "kahneman-2011-thinking-fast"',
+    customInstructions: 'Include a critical analysis. Note methodological strengths/weaknesses.',
+  },
+  meeting: {
+    role: 'Meeting note compiler — extract decisions, actions, and context',
+    outputFormat: '## Context, ## Decisions, ## Action Items, ## Open Questions sections',
+    wikilinkRules: 'Link project names, people, and recurring topics in [[wikilinks]]',
+    namingConvention: 'date-topic slug, e.g. "2025-01-15-product-review"',
+    customInstructions: 'Lead with decisions made. List action items with owners if mentioned.',
+  },
+}
+
 export const DEFAULT_CONVENTIONS: Conventions = {
   role: 'Knowledge compiler — transform source material into structured wiki notes',
   outputFormat: 'Structured markdown with ## Overview, ## Key Concepts, ## Connections sections',

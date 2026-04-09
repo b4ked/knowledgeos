@@ -16,6 +16,7 @@ import ToastStack from '@/components/ToastStack'
 import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
+import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -35,7 +36,10 @@ export default function Home() {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [graphLoading, setGraphLoading] = useState(false)
   const [showChat, setShowChat] = useState(true)
-  const [showConventions, setShowConventions] = useState(false)
+  const [showPresets, setShowPresets] = useState(false)
+  const [compilePreset, setCompilePreset] = useState<string>('default')
+  const [compilePresetConventions, setCompilePresetConventions] = useState<Record<string, unknown>>({})
+  const [sidebarPresets, setSidebarPresets] = useState<string[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -56,6 +60,13 @@ export default function Home() {
     browserAdapterRef.current = adapter ?? null
     setVaultMode(mode)
   }
+
+  // Load custom presets list for sidebar compile selector
+  useEffect(() => {
+    fetch('/api/presets').then((r) => r.json())
+      .then((d: { names: string[] }) => setSidebarPresets(d.names ?? []))
+      .catch(() => { /* silent */ })
+  }, [])
 
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
@@ -180,10 +191,13 @@ export default function Home() {
   }
 
   function handleNoteSaved(note: NoteMetadata) {
-    loadNotes(folder)
+    const noteFolder = note.folder as Folder
+    if (noteFolder !== folder) setFolder(noteFolder)
+    loadNotes(noteFolder)
     setPanel('viewer')
     handleSelectNote(note)
-    addToast(`Saved ${note.slug}`, 'success')
+    if (showGraph) loadGraph()
+    addToast(`Saved & compiled → ${note.slug}`, 'success')
   }
 
   function handleCheck(slug: string, isChecked: boolean) {
@@ -204,11 +218,18 @@ export default function Home() {
       .filter((n) => checkedSlugs.has(n.slug))
       .map((n) => n.path)
 
+    // Resolve conventions for selected compile preset
+    let conventions: Record<string, unknown> = compilePresetConventions
+    if (!Object.keys(conventions).length) {
+      // Built-in preset
+      conventions = BUILT_IN_PRESETS[compilePreset] ?? {}
+    }
+
     try {
       const res = await fetch('/api/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notePaths }),
+        body: JSON.stringify({ notePaths, conventions }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -337,7 +358,7 @@ export default function Home() {
       if (e.metaKey && e.key === 'n') { e.preventDefault(); setShowGraph(false); setPanel('new') }
       if (e.metaKey && e.key === 'g') { e.preventDefault(); toggleGraph() }
       if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
-      if (e.metaKey && e.key === ',') { e.preventDefault(); setShowConventions((v) => !v) }
+      if (e.metaKey && e.key === ',') { e.preventDefault(); setShowPresets((v) => !v) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -376,13 +397,13 @@ export default function Home() {
             Graph
           </button>
           <button
-            onClick={() => setShowConventions((v) => !v)}
+            onClick={() => setShowPresets((v) => !v)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              showConventions ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+              showPresets ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
             }`}
-            title="Conventions (⌘,)"
+            title="Presets (⌘,)"
           >
-            Conventions
+            Presets
           </button>
           <button
             onClick={() => setShowRAG(true)}
@@ -473,12 +494,45 @@ export default function Home() {
             )}
 
             {folder === 'raw' && (
-              <div className="shrink-0 px-3 py-2 border-t border-gray-800">
+              <div className="shrink-0 px-3 py-2 border-t border-gray-800 space-y-2">
                 {compileError && (
-                  <p className="text-xs text-red-400 mb-2 truncate" title={compileError}>
+                  <p className="text-xs text-red-400 truncate" title={compileError}>
                     {compileError}
                   </p>
                 )}
+                {/* Preset selector */}
+                <div className="flex flex-wrap gap-1">
+                  {Object.keys(BUILT_IN_PRESETS).map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => { setCompilePreset(key); setCompilePresetConventions({}) }}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors capitalize ${
+                        compilePreset === key && !sidebarPresets.includes(compilePreset)
+                          ? 'bg-blue-700 text-blue-100'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                      }`}
+                    >
+                      {key}
+                    </button>
+                  ))}
+                  {sidebarPresets.map((name) => (
+                    <button
+                      key={name}
+                      onClick={async () => {
+                        setCompilePreset(name)
+                        const res = await fetch(`/api/presets/${encodeURIComponent(name)}`)
+                        if (res.ok) setCompilePresetConventions(await res.json())
+                      }}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        compilePreset === name && sidebarPresets.includes(compilePreset)
+                          ? 'bg-amber-700 text-amber-100'
+                          : 'bg-gray-800 text-amber-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={handleCompile}
                   disabled={checkedSlugs.size === 0 || compiling}
@@ -515,7 +569,6 @@ export default function Home() {
             <main className="flex-1 bg-gray-950 overflow-hidden flex flex-col min-w-0">
               {panel === 'new' ? (
                 <NewNotePanel
-                  defaultFolder={folder}
                   onSave={handleNoteSaved}
                   onCancel={() => setPanel('viewer')}
                 />
@@ -610,17 +663,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Conventions editor overlay */}
-      {showConventions && (
-        <div className="fixed inset-0 bg-black/60 flex items-start justify-end z-40 pt-12">
-          <aside className="w-96 h-full bg-gray-900 border-l border-gray-800 flex flex-col shadow-2xl">
-            <ConventionsEditor
-              onClose={() => setShowConventions(false)}
-              onSaved={(msg) => addToast(msg, 'success')}
-              onError={(msg) => addToast(msg, 'error')}
-            />
-          </aside>
-        </div>
+      {/* Presets modal */}
+      {showPresets && (
+        <ConventionsEditor
+          onClose={() => setShowPresets(false)}
+          onSaved={(msg) => addToast(msg, 'success')}
+          onError={(msg) => addToast(msg, 'error')}
+        />
       )}
 
       {/* Settings modal */}
