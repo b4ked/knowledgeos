@@ -16,17 +16,34 @@ export default function NewNotePanel({ defaultFolder = 'raw', onSave, onCancel }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conventionLabel, setConventionLabel] = useState<string | null>(null)
+  const [customPresets, setCustomPresets] = useState<string[]>([])
 
   useEffect(() => {
-    fetch('/api/conventions')
-      .then((r) => r.json())
-      .then((data: { provider?: string; compilationModel?: string }) => {
-        if (data.provider && data.compilationModel) {
-          setConventionLabel(`${data.provider} / ${data.compilationModel}`)
-        }
-      })
-      .catch(() => { /* silent */ })
+    Promise.all([
+      fetch('/api/conventions').then((r) => r.json()).catch(() => ({})),
+      fetch('/api/presets').then((r) => r.json()).catch(() => ({ names: [] })),
+    ]).then(([conventions, presetsData]) => {
+      const c = conventions as { provider?: string; compilationModel?: string }
+      if (c.provider && c.compilationModel) {
+        setConventionLabel(`${c.provider} / ${c.compilationModel}`)
+      }
+      setCustomPresets((presetsData as { names: string[] }).names ?? [])
+    })
   }, [])
+
+  async function applyPreset(name: string) {
+    const res = await fetch(`/api/presets/${encodeURIComponent(name)}`)
+    if (!res.ok) return
+    const preset = await res.json() as { provider?: string; compilationModel?: string }
+    await fetch('/api/conventions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(preset),
+    })
+    if (preset.provider && preset.compilationModel) {
+      setConventionLabel(`${preset.provider} / ${preset.compilationModel}`)
+    }
+  }
 
   async function handleSave() {
     if (!filename.trim()) {
@@ -86,6 +103,25 @@ export default function NewNotePanel({ defaultFolder = 'raw', onSave, onCancel }
         {error && (
           <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded px-3 py-2">
             {error}
+          </div>
+        )}
+
+        {/* Preset selector */}
+        {customPresets.length > 0 && (
+          <div className="flex gap-2 items-start">
+            <label className="text-xs text-gray-500 w-20 pt-1 shrink-0">Preset</label>
+            <div className="flex flex-wrap gap-1">
+              {customPresets.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => applyPreset(name)}
+                  className="px-2 py-1 text-xs rounded bg-gray-800 text-amber-300 hover:bg-gray-700 transition-colors"
+                  title={`Apply preset "${name}"`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
