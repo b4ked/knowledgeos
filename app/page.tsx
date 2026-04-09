@@ -21,7 +21,7 @@ type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
 
 export default function Home() {
-  const [folder, setFolder] = useState<Folder>('raw')
+  const [folder, setFolder] = useState<Folder>('wiki')
   const [notes, setNotes] = useState<NoteMetadata[]>([])
   const [selectedNote, setSelectedNote] = useState<NoteMetadata | null>(null)
   const [noteContent, setNoteContent] = useState<string>('')
@@ -31,21 +31,25 @@ export default function Home() {
   const [checkedSlugs, setCheckedSlugs] = useState<Set<string>>(new Set())
   const [compiling, setCompiling] = useState(false)
   const [compileError, setCompileError] = useState<string | null>(null)
-  const [showGraph, setShowGraph] = useState(false)
+  const [showGraph, setShowGraph] = useState(true)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [graphLoading, setGraphLoading] = useState(false)
-  const [showChat, setShowChat] = useState(false)
+  const [showChat, setShowChat] = useState(true)
   const [showConventions, setShowConventions] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
   const browserAdapterRef = useRef<BrowserVaultAdapter | null>(null)
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
-  const [chatWidth, setChatWidth] = useState(640)
+  const [chatWidth, setChatWidth] = useState(320)
   const isResizingChat = useRef(false)
+  const isResizingSidebar = useRef(false)
   const resizeStartX = useRef(0)
-  const resizeStartWidth = useRef(640)
+  const resizeStartWidth = useRef(320)
+  const resizeStartXSidebar = useRef(0)
+  const resizeStartWidthSidebar = useRef(256)
   const { toasts, addToast, removeToast } = useToast()
 
   function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
@@ -303,14 +307,22 @@ export default function Home() {
     }, 150)
   }
 
-  // Chat resize drag
+  // Resize drag — sidebar (right edge) and chat (left edge)
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
-      if (!isResizingChat.current) return
-      const delta = resizeStartX.current - e.clientX
-      setChatWidth(Math.max(280, Math.min(960, resizeStartWidth.current + delta)))
+      if (isResizingSidebar.current) {
+        const delta = e.clientX - resizeStartXSidebar.current
+        setSidebarWidth(Math.max(160, Math.min(480, resizeStartWidthSidebar.current + delta)))
+      }
+      if (isResizingChat.current) {
+        const delta = resizeStartX.current - e.clientX
+        setChatWidth(Math.max(200, Math.min(960, resizeStartWidth.current + delta)))
+      }
     }
-    function onMouseUp() { isResizingChat.current = false }
+    function onMouseUp() {
+      isResizingChat.current = false
+      isResizingSidebar.current = false
+    }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
     return () => {
@@ -412,7 +424,11 @@ export default function Home() {
 
         {/* Sidebar */}
         {sidebarOpen && (
-          <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+          <aside
+            className="bg-gray-900 border-r border-gray-800 flex flex-row shrink-0"
+            style={{ width: sidebarWidth }}
+          >
+          <div className="flex flex-col flex-1 min-w-0">
             <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
               <h1 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</h1>
               <button
@@ -476,6 +492,18 @@ export default function Home() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Sidebar resize handle — right edge */}
+          <div
+            className="w-1 shrink-0 cursor-col-resize bg-gray-800 hover:bg-blue-500 active:bg-blue-400 transition-colors select-none"
+            onMouseDown={(e) => {
+              isResizingSidebar.current = true
+              resizeStartXSidebar.current = e.clientX
+              resizeStartWidthSidebar.current = sidebarWidth
+              e.preventDefault()
+            }}
+          />
           </aside>
         )}
 

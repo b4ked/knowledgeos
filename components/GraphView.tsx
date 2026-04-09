@@ -226,6 +226,25 @@ export default function GraphView({ data, onNodeClick, highlightedSlugs }: Graph
         .attr('y', (d) => (d.y ?? 0) + 3)
     })
 
+    // Auto-fit to show ~90% of the graph once the simulation settles
+    simulation.on('end', () => {
+      const { width: W, height: H } = dimensionsRef.current
+      const xs = simNodes.map((d) => d.x ?? 0)
+      const ys = simNodes.map((d) => d.y ?? 0)
+      const xMin = Math.min(...xs), xMax = Math.max(...xs)
+      const yMin = Math.min(...ys), yMax = Math.max(...ys)
+      const pad = 60
+      const graphW = xMax - xMin + pad * 2
+      const graphH = yMax - yMin + pad * 2
+      const scale = Math.min((W / graphW) * 0.9, (H / graphH) * 0.9, 1.5)
+      const tx = W / 2 - scale * ((xMin + xMax) / 2)
+      const ty = H / 2 - scale * ((yMin + yMax) / 2)
+      root.transition().duration(600).call(
+        zoom.transform,
+        d3.zoomIdentity.translate(tx, ty).scale(scale)
+      )
+    })
+
     return () => { simulation.stop() }
   }, [data, visibleTypes]) // ← only data + filter; NOT onNodeClick, NOT highlightedSlugs
 
