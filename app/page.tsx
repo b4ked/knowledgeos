@@ -334,7 +334,7 @@ export default function Home() {
   // Keyboard shortcuts
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.metaKey && e.key === 'n') { e.preventDefault(); setPanel('new') }
+      if (e.metaKey && e.key === 'n') { e.preventDefault(); setShowGraph(false); setPanel('new') }
       if (e.metaKey && e.key === 'g') { e.preventDefault(); toggleGraph() }
       if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
       if (e.metaKey && e.key === ',') { e.preventDefault(); setShowConventions((v) => !v) }
@@ -351,7 +351,7 @@ export default function Home() {
         <span className="text-sm font-semibold tracking-wide text-gray-100">KnowledgeOS</span>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setPanel('new')}
+            onClick={() => { setShowGraph(false); setPanel('new') }}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="New note (⌘N)"
           >
