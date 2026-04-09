@@ -1,8 +1,11 @@
 import { getAdapter } from '@/lib/vault/getAdapter'
 import { parseLinks } from '@/lib/graph/parseLinks'
 import type { NoteInput } from '@/lib/graph/parseLinks'
+import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 export async function GET() {
+  if (getVpsConfig()) return proxyToVps('/api/graph', 'GET')
+
   const adapter = await getAdapter()
   await adapter.ensureDirectories()
 

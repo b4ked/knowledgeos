@@ -39,7 +39,7 @@ export async function compile(
   // Determine output slug/path
   const slug = outputFilename
     ? outputFilename.replace(/\.md$/, '')
-    : generateSlug(notePaths)
+    : generateSlug(notePaths, output)
   const outputPath = `wiki/${slug}.md`
 
   // Write compiled note
@@ -67,12 +67,24 @@ export function extractWikilinks(markdown: string): string[] {
   return [...new Set(matches.map((m) => m.slice(2, -2)))]
 }
 
-function generateSlug(notePaths: string[]): string {
-  const base = path.basename(notePaths[0], '.md').replace(/^(raw|wiki)\//, '')
-  if (notePaths.length === 1) {
-    return base
+function generateSlug(notePaths: string[], output?: string): string {
+  // Prefer deriving slug from the first heading in the compiled output
+  if (output) {
+    const headingMatch = output.match(/^#{1,3}\s+(.+)$/m)
+    if (headingMatch) {
+      const slug = headingMatch[1]
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 80)
+      if (slug) return slug
+    }
   }
-  const second = path.basename(notePaths[1], '.md').replace(/^(raw|wiki)\//, '')
+  // Fall back to source filename
+  const base = path.basename(notePaths[0], '.md').replace(/[_\-]?temp[_\-]\d+/i, '').replace(/^[-_]|[-_]$/g, '') || 'note'
+  if (notePaths.length === 1) return base
+  const second = path.basename(notePaths[1], '.md')
   return `${base}+${second}`
 }
 
