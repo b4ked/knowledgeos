@@ -21,6 +21,7 @@ import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import UserMenu from '@/components/UserMenu'
+import FrontmatterPanel from '@/components/FrontmatterPanel'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -657,7 +658,16 @@ export default function Home() {
                   onWikilinkClick={handleWikilinkClick}
                   onContentSaved={(newContent) => setNoteContent(newContent)}
                 />
-              ) : (
+              ) : null}
+              {selectedNote && folder === 'wiki' && panel !== 'new' && (
+                <FrontmatterPanel
+                  content={noteContent}
+                  slug={selectedNote.slug}
+                  folder={folder}
+                  onContentSaved={(newContent) => setNoteContent(newContent)}
+                />
+              )}
+              {!selectedNote && panel !== 'new' ? (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center space-y-3">
                     {notes.length === 0 && !loading ? (
@@ -677,7 +687,7 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-              )}
+              ) : null}
             </main>
           )}
 
