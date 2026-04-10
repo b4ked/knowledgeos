@@ -13,6 +13,11 @@ export default function VaultSetupPage() {
     if (!selected) return
     setSaving(true)
     try {
+      try {
+        window.localStorage.setItem('knowledgeos.pendingVaultMode', selected)
+      } catch {
+        // Ignore storage failures
+      }
       await fetch('/api/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

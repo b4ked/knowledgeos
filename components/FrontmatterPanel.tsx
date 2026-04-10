@@ -3,15 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
 import type { NoteFrontmatter } from '@/lib/vault/frontmatter'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface FrontmatterPanelProps {
   content: string
   slug: string
   folder: 'raw' | 'wiki'
   onContentSaved?: (newContent: string) => void
+  browserAdapter?: BrowserVaultAdapter | null
 }
 
-export default function FrontmatterPanel({ content, slug, folder, onContentSaved }: FrontmatterPanelProps) {
+export default function FrontmatterPanel({ content, slug, folder, onContentSaved, browserAdapter }: FrontmatterPanelProps) {
   const [open, setOpen] = useState(false)
   const [fm, setFm] = useState<NoteFrontmatter>({ tags: [] })
   const [body, setBody] = useState('')
@@ -33,12 +35,16 @@ export default function FrontmatterPanel({ content, slug, folder, onContentSaved
     setSaveError(null)
     try {
       const newContent = stringifyWithFrontmatter(frontmatter, noteBody)
-      const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newContent }),
-      })
-      if (!res.ok) throw new Error('Save failed')
+      if (browserAdapter) {
+        await browserAdapter.writeNote(`${folder}/${slug}.md`, newContent)
+      } else {
+        const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newContent }),
+        })
+        if (!res.ok) throw new Error('Save failed')
+      }
       onContentSaved?.(newContent)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')

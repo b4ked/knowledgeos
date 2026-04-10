@@ -106,7 +106,7 @@ export async function sendWelcomeEmail({
           Open KnowledgeOS
         </a>
         <p style="font-size:12px;color:#6b7280;margin:24px 0 0">
-          On the free plan, KnowledgeOS uses your own API key (OpenAI or Anthropic). Upgrade anytime for managed AI with no key required.
+          Free plans include 10 combined chats or compilations per day. Upgrade anytime for higher limits.
         </p>
       </div>
     `,

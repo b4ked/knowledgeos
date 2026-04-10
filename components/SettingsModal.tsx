@@ -3,7 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { isFSAccessSupported, pickVaultFolder, BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
+import {
+  isFSAccessSupported,
+  pickVaultFolder,
+  BrowserVaultAdapter,
+  saveVaultFolderHandle,
+} from '@/lib/vault/BrowserVaultAdapter'
 import type { VaultMode } from './VaultModeBanner'
 
 interface SettingsModalProps {
@@ -64,6 +69,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
       const dirHandle = await pickVaultFolder()
       const adapter = new BrowserVaultAdapter(dirHandle)
       await adapter.ensureDirectories()
+      await saveVaultFolderHandle(dirHandle).catch(() => {})
       onVaultModeChange('local', adapter)
       onSaved?.('Switched to local vault')
       onClose()
@@ -286,50 +292,50 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                 </div>
               </section>
 
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-                  Note Folder Paths
-                </h3>
-                <p className="text-xs text-gray-600 mb-4">
-                  Set absolute paths to your raw and wiki note folders. Leave blank to use the
-                  default <code className="bg-gray-800 px-0.5 rounded text-gray-400">VAULT_PATH/raw</code> and{' '}
-                  <code className="bg-gray-800 px-0.5 rounded text-gray-400">VAULT_PATH/wiki</code> directories.
-                </p>
+              {vaultMode === 'remote' && (
+                <section>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                    Note Folder Paths
+                  </h3>
+                  <p className="text-xs text-gray-600 mb-4">
+                    Set absolute paths to your raw and wiki note folders. Leave blank to use the
+                    default <code className="bg-gray-800 px-0.5 rounded text-gray-400">VAULT_PATH/raw</code> and{' '}
+                    <code className="bg-gray-800 px-0.5 rounded text-gray-400">VAULT_PATH/wiki</code> directories.
+                  </p>
 
-                <div className="space-y-4">
-                  {/* Raw */}
-                  <div className="border border-gray-800 rounded-lg p-4">
-                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                      Raw notes folder
-                    </label>
-                    <input
-                      type="text"
-                      value={rawPath}
-                      onChange={(e) => setRawPath(e.target.value)}
-                      placeholder="/Users/you/notes/raw"
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
-                    />
-                    <TokeniseRow folder="raw" />
-                  </div>
+                  <div className="space-y-4">
+                    <div className="border border-gray-800 rounded-lg p-4">
+                      <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                        Raw notes folder
+                      </label>
+                      <input
+                        type="text"
+                        value={rawPath}
+                        onChange={(e) => setRawPath(e.target.value)}
+                        placeholder="/Users/you/notes/raw"
+                        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
+                      />
+                      <TokeniseRow folder="raw" />
+                    </div>
 
-                  {/* Wiki */}
-                  <div className="border border-gray-800 rounded-lg p-4">
-                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                      Wiki notes folder
-                    </label>
-                    <input
-                      type="text"
-                      value={wikiPath}
-                      onChange={(e) => setWikiPath(e.target.value)}
-                      placeholder="/Users/you/notes/wiki"
-                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
-                    />
-                    <TokeniseRow folder="wiki" />
+                    <div className="border border-gray-800 rounded-lg p-4">
+                      <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                        Wiki notes folder
+                      </label>
+                      <input
+                        type="text"
+                        value={wikiPath}
+                        onChange={(e) => setWikiPath(e.target.value)}
+                        placeholder="/Users/you/notes/wiki"
+                        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
+                      />
+                      <TokeniseRow folder="wiki" />
+                    </div>
                   </div>
-                </div>
-              </section>
+                </section>
+              )}
 
               {/* Presets folder */}
               <section>

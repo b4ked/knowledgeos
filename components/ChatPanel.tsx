@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
+import type { VaultMode } from './VaultModeBanner'
 
 const mdComponents: Components = {
   p: ({ children }) => <p className="mb-1.5 leading-relaxed last:mb-0">{children}</p>,
@@ -67,9 +68,11 @@ interface Message {
 interface ChatPanelProps {
   onSourceClick: (slug: string) => void
   onSourcesUpdate?: (slugs: string[]) => void
+  vaultMode?: VaultMode
+  getLocalNotes?: () => Promise<Array<{ slug: string; content: string }>>
 }
 
-export default function ChatPanel({ onSourceClick, onSourcesUpdate }: ChatPanelProps) {
+export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 'remote', getLocalNotes }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -102,10 +105,14 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate }: ChatPanelP
     setLoading(true)
 
     try {
+      const body = vaultMode === 'local' && getLocalNotes
+        ? { question, notes: await getLocalNotes() }
+        : { question }
+
       const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify(body),
       })
 
       const data = await res.json() as { answer?: string; sources?: string[]; error?: string }

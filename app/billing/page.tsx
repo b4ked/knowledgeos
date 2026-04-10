@@ -8,8 +8,8 @@ const PLANS = [
     name: "Free",
     price: "£0",
     period: "forever",
-    actions: "Unlimited (your API key)",
-    features: ["Demo vault", "Local vault mode", "AI compilation", "Knowledge graph", "RAG chat", "Custom presets", "Obsidian export"],
+    actions: "10 actions / day",
+    features: ["Demo vault", "Local vault mode", "Cloud vault mode", "10 chats + compilations per day", "Knowledge graph", "Custom presets", "Obsidian export"],
     cta: "Current plan",
     disabled: true,
     highlight: false,
@@ -76,7 +76,7 @@ export default async function BillingPage() {
         </div>
 
         <div className="bg-amber-950/30 border border-amber-800/50 rounded-xl px-4 py-3 mb-8 text-sm text-amber-300">
-          Stripe billing integration is in progress. Paid plan upgrades will be available soon. All features remain accessible in the meantime.
+          Stripe billing integration is in progress. Free users currently get 10 combined chats + compilations per day. Paid plan upgrades will be available soon.
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">

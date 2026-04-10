@@ -1,15 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface NewFolderDialogProps {
   parentPath?: string
   folder: 'raw' | 'wiki'
   onCreated: () => void
   onClose: () => void
+  browserAdapter?: BrowserVaultAdapter | null
 }
 
-export default function NewFolderDialog({ parentPath, folder, onCreated, onClose }: NewFolderDialogProps) {
+export default function NewFolderDialog({ parentPath, folder, onCreated, onClose, browserAdapter }: NewFolderDialogProps) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -23,15 +25,19 @@ export default function NewFolderDialog({ parentPath, folder, onCreated, onClose
     setError(null)
     try {
       const folderPath = parentPath ? `${parentPath}/${trimmed}` : trimmed
-      const res = await fetch('/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder, folderPath }),
-      })
-      if (!res.ok) {
-        const d = await res.json() as { error?: string }
-        setError(d.error ?? 'Failed to create folder')
-        return
+      if (browserAdapter) {
+        await browserAdapter.writeNote(`${folder}/${folderPath}/.keep`, '')
+      } else {
+        const res = await fetch('/api/folders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder, folderPath }),
+        })
+        if (!res.ok) {
+          const d = await res.json() as { error?: string }
+          setError(d.error ?? 'Failed to create folder')
+          return
+        }
       }
       onCreated()
       onClose()

@@ -12,20 +12,38 @@ import { extractWikilinks } from '@/lib/compiler/compile'
 export async function POST(request: Request) {
   const body = await request.json() as {
     notePaths?: string[]
+    sources?: string[]
     outputFilename?: string
     conventions?: Partial<Conventions>
   }
 
-  const { notePaths, outputFilename, conventions } = body
+  const { notePaths, sources: providedSources, outputFilename, conventions } = body
 
-  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
-
-  if (!Array.isArray(notePaths) || notePaths.length === 0) {
-    return Response.json({ error: 'notePaths must be a non-empty array' }, { status: 400 })
+  if ((!Array.isArray(notePaths) || notePaths.length === 0) && (!Array.isArray(providedSources) || providedSources.length === 0)) {
+    return Response.json({ error: 'notePaths or sources must be a non-empty array' }, { status: 400 })
   }
 
   const session = await auth()
   const userId = session?.user?.id ?? undefined
+  const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
+  const llm = getLLMProvider(conventions ?? {})
+
+  if (Array.isArray(providedSources) && providedSources.length > 0) {
+    try {
+      const output = await llm.compile(providedSources, merged)
+      const wikilinks = extractWikilinks(output)
+      const slug = outputFilename
+        ? outputFilename.replace(/\.md$/, '')
+        : generateSlugFromOutput(notePaths ?? ['raw/note.md'], output)
+      const outputPath = `wiki/${slug}.md`
+      return Response.json({ outputPath, slug, wikilinks, output }, { status: 200 })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Compilation failed'
+      return Response.json({ error: message }, { status: 500 })
+    }
+  }
+
+  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
 
   // Cloud mode: use the database-backed adapter for authenticated users
   if (userId) {
@@ -33,11 +51,7 @@ export async function POST(request: Request) {
       const adapter = await getAdapter(userId)
 
       // Read source notes from cloud adapter
-      const sources = await Promise.all(notePaths.map((p) => adapter.readNote(p)))
-
-      // Compile via LLM
-      const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
-      const llm = getLLMProvider(conventions ?? {})
+      const sources = await Promise.all(notePaths!.map((p) => adapter.readNote(p)))
       const output = await llm.compile(sources, merged)
 
       // Extract wikilinks from output
@@ -46,13 +60,13 @@ export async function POST(request: Request) {
       // Determine output slug/path
       const slug = outputFilename
         ? outputFilename.replace(/\.md$/, '')
-        : generateSlugFromOutput(notePaths, output)
+        : generateSlugFromOutput(notePaths!, output)
       const outputPath = `wiki/${slug}.md`
 
       // Write compiled note back to cloud adapter
       await adapter.writeNote(outputPath, output)
 
-      return Response.json({ outputPath, slug, wikilinks }, { status: 200 })
+      return Response.json({ outputPath, slug, wikilinks, output }, { status: 200 })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Compilation failed'
       return Response.json({ error: message }, { status: 500 })
@@ -69,7 +83,7 @@ export async function POST(request: Request) {
   const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
 
   try {
-    const result = await compile(notePaths, outputFilename, vaultPath, conventions ?? {}, rawPath, wikiPath)
+    const result = await compile(notePaths!, outputFilename, vaultPath, conventions ?? {}, rawPath, wikiPath)
     return Response.json(result, { status: 200 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Compilation failed'

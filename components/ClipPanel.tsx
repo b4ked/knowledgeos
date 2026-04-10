@@ -2,16 +2,20 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
+import type { VaultMode } from './VaultModeBanner'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface ClipPanelProps {
   onClose: () => void
   onClipped: (note: NoteMetadata) => void
+  vaultMode: VaultMode
+  browserAdapter?: BrowserVaultAdapter | null
 }
 
 type Tab = 'url' | 'paste'
 type Status = 'idle' | 'loading' | 'success' | 'error'
 
-export default function ClipPanel({ onClose, onClipped }: ClipPanelProps) {
+export default function ClipPanel({ onClose, onClipped, vaultMode, browserAdapter }: ClipPanelProps) {
   const [tab, setTab] = useState<Tab>('url')
 
   // URL tab state
@@ -79,15 +83,34 @@ export default function ClipPanel({ onClose, onClipped }: ClipPanelProps) {
         body: JSON.stringify({
           url: trimmedUrl,
           filename: urlFilename.trim() || undefined,
+          save: vaultMode !== 'local',
         }),
       })
-      const data = await res.json() as NoteMetadata & { error?: string }
+      const data = await res.json() as (NoteMetadata & { error?: string }) | {
+        error?: string
+        slug: string
+        filename: string
+        path: `raw/${string}`
+        content: string
+      }
       if (!res.ok) {
         setUrlStatus('error')
-        setUrlError(data.error ?? 'Clip failed')
+        setUrlError(('error' in data ? data.error : undefined) ?? 'Clip failed')
       } else {
+        if (vaultMode === 'local' && browserAdapter && 'content' in data) {
+          await browserAdapter.writeNote(data.path, data.content)
+          setUrlSaved({
+            slug: data.slug,
+            filename: data.filename,
+            folder: 'raw',
+            path: data.path,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        } else {
+          setUrlSaved(data as NoteMetadata)
+        }
         setUrlStatus('success')
-        setUrlSaved(data)
       }
     } catch {
       setUrlStatus('error')
@@ -115,15 +138,34 @@ export default function ClipPanel({ onClose, onClipped }: ClipPanelProps) {
         body: JSON.stringify({
           [looksLikeHtml ? 'html' : 'text']: trimmedContent,
           filename: pasteFilename.trim() || undefined,
+          save: vaultMode !== 'local',
         }),
       })
-      const data = await res.json() as NoteMetadata & { error?: string }
+      const data = await res.json() as (NoteMetadata & { error?: string }) | {
+        error?: string
+        slug: string
+        filename: string
+        path: `raw/${string}`
+        content: string
+      }
       if (!res.ok) {
         setPasteStatus('error')
-        setPasteError(data.error ?? 'Save failed')
+        setPasteError(('error' in data ? data.error : undefined) ?? 'Save failed')
       } else {
+        if (vaultMode === 'local' && browserAdapter && 'content' in data) {
+          await browserAdapter.writeNote(data.path, data.content)
+          setPasteSaved({
+            slug: data.slug,
+            filename: data.filename,
+            folder: 'raw',
+            path: data.path,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+        } else {
+          setPasteSaved(data as NoteMetadata)
+        }
         setPasteStatus('success')
-        setPasteSaved(data)
       }
     } catch {
       setPasteStatus('error')

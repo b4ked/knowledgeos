@@ -7,20 +7,27 @@ interface Tag { name: string; count: number }
 interface TagBrowserProps {
   activeTag: string | null
   onTagSelect: (tag: string | null) => void
+  tags?: Tag[]
 }
 
-export default function TagBrowser({ activeTag, onTagSelect }: TagBrowserProps) {
+export default function TagBrowser({ activeTag, onTagSelect, tags: providedTags }: TagBrowserProps) {
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (providedTags) {
+      setTags(providedTags)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     fetch('/api/tags')
       .then(r => r.json())
       .then((d: { tags: Tag[] }) => setTags(d.tags ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [providedTags])
 
   return (
     <div className="flex flex-col h-full">

@@ -4,8 +4,8 @@ import Link from "next/link"
 
 const PLAN_LIMITS: Record<string, { actions: string; description: string }> = {
   free: {
-    actions: "Unlimited",
-    description: "You provide your own API key (OpenAI or Anthropic). Usage is unlimited on your own key.",
+    actions: "10 / day",
+    description: "Chats and compilations share a single combined daily limit of 10 on the free plan.",
   },
   starter: {
     actions: "100 / day",
@@ -66,7 +66,7 @@ export default async function UsagePage() {
           <div className="border border-gray-800 rounded-xl p-6 mb-6">
             <h2 className="text-sm font-semibold text-gray-100 mb-2">Usage tracking</h2>
             <p className="text-xs text-gray-500 mb-3">
-              Detailed per-action usage tracking is available on paid plans. On the free plan, AI calls go directly to your own API key — there is no usage limit or cap on our side.
+              Detailed per-action usage tracking is available on paid plans. On the free plan, chats and compilations share a combined daily limit of 10.
             </p>
             <Link
               href="/billing"

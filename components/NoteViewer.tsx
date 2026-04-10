@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface NoteViewerProps {
   content: string
@@ -12,6 +13,7 @@ interface NoteViewerProps {
   folder?: 'raw' | 'wiki'
   onWikilinkClick?: (slug: string) => void
   onContentSaved?: (newContent: string) => void
+  browserAdapter?: BrowserVaultAdapter | null
 }
 
 function wikilinkToSlug(label: string): string {
@@ -102,7 +104,7 @@ function makeComponents(onWikilinkClick?: (slug: string) => void): Components {
 
 type SplitMode = 'split' | 'editor'
 
-export default function NoteViewer({ content, slug, folder, onWikilinkClick, onContentSaved }: NoteViewerProps) {
+export default function NoteViewer({ content, slug, folder, onWikilinkClick, onContentSaved, browserAdapter }: NoteViewerProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
   const [saving, setSaving] = useState(false)
@@ -120,12 +122,16 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
     setSaving(true)
     setSaveError(null)
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editContent }),
-      })
-      if (!res.ok) throw new Error('Save failed')
+      if (browserAdapter) {
+        await browserAdapter.writeNote(`${folder}/${slug}.md`, editContent)
+      } else {
+        const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: editContent }),
+        })
+        if (!res.ok) throw new Error('Save failed')
+      }
       setIsEditing(false)
       onContentSaved?.(editContent)
     } catch (err) {

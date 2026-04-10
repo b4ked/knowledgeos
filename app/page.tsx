@@ -18,13 +18,19 @@ import ClipPanel from '@/components/ClipPanel'
 import TagBrowser from '@/components/TagBrowser'
 import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
-import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
+import {
+  BrowserVaultAdapter,
+  restoreSavedVaultFolder,
+  saveVaultFolderHandle,
+} from '@/lib/vault/BrowserVaultAdapter'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import UserMenu from '@/components/UserMenu'
 import FrontmatterPanel from '@/components/FrontmatterPanel'
+import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
+type Tag = { name: string; count: number }
 
 export default function Home() {
   const [folder, setFolder] = useState<Folder>('wiki')
@@ -59,6 +65,9 @@ export default function Home() {
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
   const [vaultModeLoaded, setVaultModeLoaded] = useState(false)
   const browserAdapterRef = useRef<BrowserVaultAdapter | null>(null)
+  const [localHandleMissing, setLocalHandleMissing] = useState(false)
+  const [noteTags, setNoteTags] = useState<Record<string, string[]>>({})
+  const [localTags, setLocalTags] = useState<Tag[]>([])
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(320)
   const isResizingChat = useRef(false)
@@ -69,9 +78,17 @@ export default function Home() {
   const resizeStartWidthSidebar = useRef(256)
   const { toasts, addToast, removeToast } = useToast()
 
-  function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
+  async function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
     browserAdapterRef.current = adapter ?? null
     setVaultMode(mode)
+    setLocalHandleMissing(mode === 'local' && !adapter)
+    if (mode === 'local' && adapter) {
+      try {
+        await saveVaultFolderHandle(adapter.getHandle())
+      } catch {
+        // Non-fatal — local mode still works for this session
+      }
+    }
     // Persist preference for authenticated users
     if (mode === 'cloud' || mode === 'local') {
       fetch('/api/preferences', {
@@ -84,18 +101,60 @@ export default function Home() {
 
   // Load vault mode preference for authenticated users
   useEffect(() => {
-    fetch('/api/preferences')
-      .then((r) => {
-        if (!r.ok) return null
-        return r.json() as Promise<{ vaultMode: string }>
-      })
-      .then((prefs) => {
-        if (prefs?.vaultMode === 'cloud' || prefs?.vaultMode === 'local') {
-          setVaultMode(prefs.vaultMode as VaultMode)
+    let cancelled = false
+
+    async function loadInitialVaultMode() {
+      let nextMode: VaultMode = 'remote'
+
+      try {
+        const response = await fetch('/api/preferences')
+        if (response.ok) {
+          const prefs = await response.json() as { vaultMode?: string }
+          if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
+            nextMode = prefs.vaultMode
+          }
         }
-      })
-      .catch(() => { /* not authenticated — keep default */ })
-      .finally(() => setVaultModeLoaded(true))
+      } catch {
+        // Keep remote default for anonymous/demo usage
+      }
+
+      try {
+        const pending = window.localStorage.getItem('knowledgeos.pendingVaultMode')
+        if (pending === 'cloud' || pending === 'local') {
+          nextMode = pending
+          window.localStorage.removeItem('knowledgeos.pendingVaultMode')
+          fetch('/api/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vaultMode: pending }),
+          }).catch(() => { /* ignore until authenticated */ })
+        }
+      } catch {
+        // Ignore storage failures
+      }
+
+      if (nextMode === 'local') {
+        const handle = await restoreSavedVaultFolder().catch(() => null)
+        if (!cancelled && handle) {
+          browserAdapterRef.current = new BrowserVaultAdapter(handle)
+          setLocalHandleMissing(false)
+        } else if (!cancelled) {
+          setLocalHandleMissing(true)
+        }
+      } else if (!cancelled) {
+        setLocalHandleMissing(false)
+      }
+
+      if (!cancelled) {
+        setVaultMode(nextMode)
+        setVaultModeLoaded(true)
+      }
+    }
+
+    loadInitialVaultMode()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Load custom presets list for sidebar compile selector
@@ -108,8 +167,14 @@ export default function Home() {
   const loadNotes = useCallback(async (f: Folder) => {
     setLoading(true)
     try {
-      if (vaultMode === 'local' && browserAdapterRef.current) {
-        const data = await browserAdapterRef.current.listNotes(f)
+      if (vaultMode === 'local') {
+        if (!browserAdapterRef.current) {
+          setNotes([])
+          return
+        }
+        const data = (await browserAdapterRef.current.listNotes(f)).filter(
+          (note) => note.filename !== '.keep' && !note.slug.endsWith('/.keep') && note.slug !== '.keep'
+        )
         setNotes(data)
       } else {
         const res = await fetch(`/api/notes?folder=${f}`)
@@ -127,8 +192,12 @@ export default function Home() {
   const loadGraph = useCallback(async () => {
     setGraphLoading(true)
     try {
-      if (vaultMode === 'local' && browserAdapterRef.current) {
+      if (vaultMode === 'local') {
         const adapter = browserAdapterRef.current
+        if (!adapter) {
+          setGraphData({ nodes: [], edges: [] })
+          return
+        }
         const [wikiMeta, rawMeta] = await Promise.all([
           adapter.listNotes('wiki'),
           adapter.listNotes('raw'),
@@ -172,6 +241,91 @@ export default function Home() {
     if (showGraph) loadGraph()
   }, [showGraph, loadGraph])
 
+  useEffect(() => {
+    if (!vaultModeLoaded || vaultMode !== 'local' || !localHandleMissing) return
+    addToast('Reconnect your local vault folder in Settings to continue using local mode.', 'info')
+  }, [vaultModeLoaded, vaultMode, localHandleMissing, addToast])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadNoteTags() {
+      if (notes.length === 0) {
+        if (!cancelled) setNoteTags({})
+        return
+      }
+
+      const entries = await Promise.all(
+        notes.map(async (note) => {
+          try {
+            const content = vaultMode === 'local' && browserAdapterRef.current
+              ? await browserAdapterRef.current.readNote(note.path)
+              : await fetch(`/api/notes/${encodeURIComponent(note.slug)}?folder=${note.folder}`)
+                  .then(async (res) => (res.ok ? ((await res.json()) as { content: string }).content : ''))
+            const { frontmatter } = parseNoteFrontmatter(content)
+            return [note.path, frontmatter.tags] as const
+          } catch {
+            return [note.path, []] as const
+          }
+        })
+      )
+
+      if (!cancelled) {
+        setNoteTags(Object.fromEntries(entries))
+      }
+    }
+
+    loadNoteTags()
+    return () => {
+      cancelled = true
+    }
+  }, [notes, vaultMode])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadLocalTags() {
+      if (vaultMode !== 'local' || !browserAdapterRef.current) {
+        if (!cancelled) setLocalTags([])
+        return
+      }
+
+      const adapter = browserAdapterRef.current
+      const [wikiMeta, rawMeta] = await Promise.all([
+        adapter.listNotes('wiki'),
+        adapter.listNotes('raw'),
+      ])
+      const tagCounts = new Map<string, number>()
+
+      await Promise.all(
+        [...wikiMeta, ...rawMeta].map(async (note) => {
+          try {
+            const content = await adapter.readNote(note.path)
+            const { frontmatter } = parseNoteFrontmatter(content)
+            for (const tag of frontmatter.tags) {
+              tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
+            }
+          } catch {
+            // Skip unreadable files
+          }
+        })
+      )
+
+      if (!cancelled) {
+        setLocalTags(
+          Array.from(tagCounts.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+        )
+      }
+    }
+
+    loadLocalTags()
+    return () => {
+      cancelled = true
+    }
+  }, [vaultMode, notes])
+
   // Open graph: close note viewer
   function openGraph() {
     setShowGraph(true)
@@ -211,11 +365,19 @@ export default function Home() {
 
   async function confirmDelete() {
     if (!deleteConfirm) return
-    const res = await fetch(
-      `/api/notes/${deleteConfirm.slug}?folder=${deleteConfirm.folder}`,
-      { method: 'DELETE' }
-    )
-    if (res.ok || res.status === 204) {
+    let ok = false
+    if (vaultMode === 'local' && browserAdapterRef.current) {
+      await browserAdapterRef.current.deleteNote(deleteConfirm.path).catch(() => {})
+      ok = true
+    } else {
+      const res = await fetch(
+        `/api/notes/${deleteConfirm.slug}?folder=${deleteConfirm.folder}`,
+        { method: 'DELETE' }
+      )
+      ok = res.ok || res.status === 204
+    }
+
+    if (ok) {
       if (selectedNote?.slug === deleteConfirm.slug) {
         setSelectedNote(null)
         setNoteContent('')
@@ -264,6 +426,39 @@ export default function Home() {
     }
 
     try {
+      if (vaultMode === 'local' && browserAdapterRef.current) {
+        const adapter = browserAdapterRef.current
+        const sources = await Promise.all(notePaths.map((notePath) => adapter.readNote(notePath)))
+        const res = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notePaths, sources, conventions }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setCompileError(data.error ?? 'Compilation failed')
+          return
+        }
+
+        await adapter.writeNote(data.outputPath, data.output)
+        setCheckedSlugs(new Set())
+        setFolder('wiki')
+        await loadNotes('wiki')
+        if (showGraph) loadGraph()
+        addToast(`Compiled → ${data.slug}`, 'success')
+        setShowGraph(false)
+        setSelectedNote({
+          slug: data.slug,
+          filename: `${data.slug}.md`,
+          folder: 'wiki',
+          path: data.outputPath,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(data.output)
+        return
+      }
+
       const res = await fetch('/api/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,6 +499,25 @@ export default function Home() {
   async function handleWikilinkClick(slug: string) {
     setFolder('wiki')
     setShowGraph(false)
+    if (vaultMode === 'local' && browserAdapterRef.current) {
+      const content = await browserAdapterRef.current.readNote(`wiki/${slug}.md`).catch(() => '')
+      if (content) {
+        setSelectedNote({
+          slug,
+          filename: `${slug}.md`,
+          folder: 'wiki',
+          path: `wiki/${slug}.md`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(content)
+        setPanel('viewer')
+      } else {
+        addToast(`Note not found: ${slug}`, 'error')
+      }
+      return
+    }
+
     const res = await fetch(`/api/notes/${slug}?folder=wiki`)
     if (res.ok) {
       const { content } = await res.json()
@@ -326,6 +540,22 @@ export default function Home() {
     setFolder('wiki')
     setShowGraph(false)
     setTimeout(async () => {
+      if (vaultMode === 'local' && browserAdapterRef.current) {
+        const content = await browserAdapterRef.current.readNote(`wiki/${slug}.md`).catch(() => '')
+        if (!content) return
+        setSelectedNote({
+          slug,
+          filename: `${slug}.md`,
+          folder: 'wiki',
+          path: `wiki/${slug}.md`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(content)
+        setPanel('viewer')
+        return
+      }
+
       const res = await fetch(`/api/notes/${slug}?folder=wiki`)
       if (res.ok) {
         const { content } = await res.json()
@@ -348,6 +578,23 @@ export default function Home() {
     const targetFolder = nodeType === 'wiki' ? 'wiki' : 'raw'
     if (folder !== targetFolder) setFolder(targetFolder)
     setTimeout(async () => {
+      if (vaultMode === 'local' && browserAdapterRef.current) {
+        const content = await browserAdapterRef.current.readNote(`${targetFolder}/${nodeId}.md`).catch(() => '')
+        if (!content) return
+        setShowGraph(false)
+        setSelectedNote({
+          slug: nodeId,
+          filename: `${nodeId}.md`,
+          folder: targetFolder,
+          path: `${targetFolder}/${nodeId}.md`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(content)
+        setPanel('viewer')
+        return
+      }
+
       const res = await fetch(`/api/notes/${nodeId}?folder=${targetFolder}`)
       if (res.ok) {
         const { content } = await res.json()
@@ -365,6 +612,10 @@ export default function Home() {
       }
     }, 150)
   }
+
+  const displayedNotes = activeTag
+    ? notes.filter((note) => (noteTags[note.path] ?? []).includes(activeTag))
+    : notes
 
   // Resize drag — sidebar (right edge) and chat (left edge)
   useEffect(() => {
@@ -450,13 +701,15 @@ export default function Home() {
           >
             Presets
           </button>
-          <button
-            onClick={() => setShowRAG(true)}
-            className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
-            title="RAG index"
-          >
-            RAG
-          </button>
+          {vaultMode === 'remote' && (
+            <button
+              onClick={() => setShowRAG(true)}
+              className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+              title="RAG index"
+            >
+              RAG
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
@@ -555,6 +808,7 @@ export default function Home() {
                 <TagBrowser
                   activeTag={activeTag}
                   onTagSelect={setActiveTag}
+                  tags={vaultMode === 'local' ? localTags : undefined}
                 />
               </div>
             )}
@@ -576,7 +830,7 @@ export default function Home() {
               </div>
             ) : (
               <FolderTree
-                notes={notes}
+                notes={displayedNotes}
                 selectedSlug={selectedNote?.slug ?? null}
                 onSelect={handleSelectNote}
                 onDelete={handleDeleteNote}
@@ -674,6 +928,8 @@ export default function Home() {
                   onSave={handleNoteSaved}
                   onCancel={() => { setPanel('viewer'); setNewNoteFolder(undefined) }}
                   defaultFolderPrefix={newNoteFolder}
+                  vaultMode={vaultMode}
+                  browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
                 />
               ) : selectedNote ? (
                 <NoteViewer
@@ -682,6 +938,7 @@ export default function Home() {
                   folder={folder}
                   onWikilinkClick={handleWikilinkClick}
                   onContentSaved={(newContent) => setNoteContent(newContent)}
+                  browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
                 />
               ) : null}
               {selectedNote && folder === 'wiki' && panel !== 'new' && (
@@ -690,6 +947,7 @@ export default function Home() {
                   slug={selectedNote.slug}
                   folder={folder}
                   onContentSaved={(newContent) => setNoteContent(newContent)}
+                  browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
                 />
               )}
               {!selectedNote && panel !== 'new' ? (
@@ -770,6 +1028,21 @@ export default function Home() {
                 <ChatPanel
                   onSourceClick={handleChatSourceClick}
                   onSourcesUpdate={(slugs) => setHighlightedSlugs(new Set(slugs))}
+                  vaultMode={vaultMode}
+                  getLocalNotes={
+                    vaultMode === 'local' && browserAdapterRef.current
+                      ? async () => {
+                          const adapter = browserAdapterRef.current!
+                          const wikiMeta = await adapter.listNotes('wiki')
+                          return Promise.all(
+                            wikiMeta.map(async (note) => ({
+                              slug: note.slug,
+                              content: await adapter.readNote(note.path).catch(() => ''),
+                            }))
+                          )
+                        }
+                      : undefined
+                  }
                 />
               </div>
             </aside>
@@ -811,6 +1084,8 @@ export default function Home() {
             setShowClip(false)
             addToast(`Clipped → ${note.path}`, 'success')
           }}
+          vaultMode={vaultMode}
+          browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
         />
       )}
 
@@ -821,6 +1096,7 @@ export default function Home() {
           folder={folder}
           onCreated={() => loadNotes(folder)}
           onClose={() => { setShowNewFolder(false); setNewFolderParent(undefined) }}
+          browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
         />
       )}
 

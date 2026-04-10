@@ -4,16 +4,20 @@ import { useState, useEffect } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { Conventions } from '@/lib/conventions/types'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
+import type { VaultMode } from '@/components/VaultModeBanner'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface NewNotePanelProps {
   onSave: (note: NoteMetadata) => void
   onCancel: () => void
   defaultFolderPrefix?: string
+  vaultMode: VaultMode
+  browserAdapter?: BrowserVaultAdapter | null
 }
 
 type PresetSource = 'builtin' | 'custom'
 
-export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: NewNotePanelProps) {
+export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, vaultMode, browserAdapter }: NewNotePanelProps) {
   const [filename, setFilename] = useState(() => defaultFolderPrefix ? `${defaultFolderPrefix}/` : '')
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
@@ -75,6 +79,44 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
 
     try {
       const providedName = filename.trim()
+
+      if (vaultMode === 'local' && browserAdapter) {
+        const tempName = providedName || `_temp-${Date.now()}`
+        const rawPath = `raw/${providedName ? `${providedName}-raw` : tempName}.md`
+
+        setStatus('Compiling…')
+        const compileRes = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notePaths: [rawPath],
+            sources: [finalContent],
+            outputFilename: providedName || undefined,
+            conventions: selectedConventions,
+          }),
+        })
+        if (!compileRes.ok) {
+          const d = await compileRes.json()
+          setError(d.error ?? 'Compilation failed')
+          return
+        }
+
+        const { slug, output, outputPath } = await compileRes.json() as { slug: string; output: string; outputPath: `wiki/${string}` }
+
+        setStatus('Saving notes…')
+        await browserAdapter.writeNote(providedName ? `raw/${providedName}-raw.md` : `raw/${slug}-raw.md`, finalContent)
+        await browserAdapter.writeNote(outputPath, output)
+
+        onSave({
+          slug,
+          filename: `${slug}.md`,
+          folder: 'wiki',
+          path: outputPath,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        return
+      }
 
       if (providedName) {
         // ── Named flow: user provided a filename ─────────────────────────────

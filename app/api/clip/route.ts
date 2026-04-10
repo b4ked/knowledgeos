@@ -10,6 +10,7 @@ interface ClipRequestBody {
   html?: string
   text?: string
   filename?: string
+  save?: boolean
 }
 
 function slugify(input: string): string {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { url, html: rawHtml, text, filename: customFilename } = body
+  const { url, html: rawHtml, text, filename: customFilename, save = true } = body
 
   if (!url && !rawHtml && !text) {
     return Response.json({ error: 'Provide url, html, or text' }, { status: 400 })
@@ -126,6 +127,15 @@ export async function POST(request: Request) {
 
   const filename = `${slug}-raw.md`
   const notePath = `raw/${filename}`
+
+  if (!save) {
+    return Response.json({
+      slug,
+      filename,
+      path: notePath,
+      content,
+    }, { status: 200 })
+  }
 
   try {
     const adapter = await getAdapter(userId)
