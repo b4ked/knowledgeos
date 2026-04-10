@@ -42,6 +42,7 @@ export default function Home() {
   const [sidebarPresets, setSidebarPresets] = useState<string[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
@@ -369,7 +370,14 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 h-12 shrink-0">
-        <span className="text-sm font-semibold tracking-wide text-gray-100">KnowledgeOS</span>
+        <a
+          href="https://knowledgeos.parrytech.co"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm font-semibold tracking-wide text-gray-100 hover:text-blue-300 transition-colors"
+        >
+          KnowledgeOS
+        </a>
         <div className="flex items-center gap-1">
           <button
             onClick={() => { setShowGraph(false); setPanel('new') }}
@@ -418,6 +426,13 @@ export default function Home() {
             title="Settings"
           >
             Settings
+          </button>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            title="Help"
+          >
+            Help
           </button>
         </div>
       </header>
@@ -686,7 +701,86 @@ export default function Home() {
       {/* RAG index panel */}
       {showRAG && <RAGPanel onClose={() => setShowRAG(false)} />}
 
+      {/* Footer */}
+      <footer className="shrink-0 flex items-center justify-center py-1.5 bg-gray-900 border-t border-gray-800">
+        <a
+          href="https://parrytech.co"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          Powered by ParryTech.co
+        </a>
+      </footer>
+
       <ToastStack toasts={toasts} onDismiss={removeToast} />
+
+      {/* Help modal */}
+      {showHelp && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowHelp(false)}>
+          <div
+            className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-100">How KnowledgeOS works</h2>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-4 text-xs text-gray-400">
+              <div>
+                <p className="text-gray-200 font-medium mb-1">The basic idea</p>
+                <p>KnowledgeOS turns raw research into a structured, queryable knowledge base. You paste anything — articles, notes, PDFs — and compile it into linked wiki notes using AI. Then you can explore your knowledge graph or chat with your vault in plain English.</p>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Raw notes vs Wiki notes</p>
+                <ul className="space-y-1 list-disc list-inside">
+                  <li><span className="text-gray-300">Raw</span> — your unprocessed source material. Paste anything here.</li>
+                  <li><span className="text-gray-300">Wiki</span> — AI-compiled notes with headers, wikilinks, and key concepts extracted. These are the structured outputs.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">How to compile</p>
+                <ol className="space-y-1 list-decimal list-inside">
+                  <li>Switch to the <span className="text-gray-300">Raw</span> folder in the sidebar</li>
+                  <li>Tick one or more raw notes using the checkboxes</li>
+                  <li>Choose a preset (Default, Academic, Legal, etc.)</li>
+                  <li>Click <span className="text-blue-400">Compile Selected</span> — the AI generates a structured wiki note in seconds</li>
+                </ol>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Toolbar buttons</p>
+                <ul className="space-y-1 list-disc list-inside">
+                  <li><span className="text-gray-300">New Note</span> — create a raw note (⌘N)</li>
+                  <li><span className="text-gray-300">Chat</span> — toggle the RAG chat panel — ask questions about your vault in plain English (⌘/)</li>
+                  <li><span className="text-gray-300">Graph</span> — toggle the knowledge graph — visualise connections between your notes (⌘G)</li>
+                  <li><span className="text-gray-300">Presets</span> — create and edit custom presets that control how the AI compiles notes (⌘,)</li>
+                  <li><span className="text-gray-300">RAG</span> — manage the search index used for chat</li>
+                  <li><span className="text-gray-300">Settings</span> — switch between local vault (files on your computer) and remote vault (cloud storage)</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Vault modes</p>
+                <ul className="space-y-1 list-disc list-inside">
+                  <li><span className="text-gray-300">Remote</span> — notes stored on KnowledgeOS servers. Works in any browser.</li>
+                  <li><span className="text-gray-300">Local</span> — points to a folder on your machine. Files never leave your computer. Chrome and Edge only (File System Access API).</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Obsidian compatible</p>
+                <p>All compiled notes are plain markdown with <span className="text-gray-300">[[wikilinks]]</span>. Open your vault in Obsidian at any time — no lock-in.</p>
+              </div>
+              <div className="pt-2 border-t border-gray-800">
+                <p className="text-gray-600">Daily limits apply based on your plan. Chats and compilations share a single combined limit. <a href="https://knowledgeos.parrytech.co#pricing" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400">View pricing →</a></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
