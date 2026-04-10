@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
+import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 
 interface NoteViewerProps {
   content: string
@@ -279,9 +280,25 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-            {content}
-          </ReactMarkdown>
+          {(() => {
+            const parsed = parseNoteFrontmatter(content)
+            return (
+              <>
+                {parsed.frontmatter.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {parsed.frontmatter.tags.map(tag => (
+                      <span key={tag} className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-400">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                  {parsed.content}
+                </ReactMarkdown>
+              </>
+            )
+          })()}
         </div>
       )}
     </div>

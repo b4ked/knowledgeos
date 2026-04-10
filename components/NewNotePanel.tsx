@@ -19,6 +19,9 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [showFrontmatter, setShowFrontmatter] = useState(false)
+  const [fmTags, setFmTags] = useState('')
+  const [fmDate, setFmDate] = useState('')
   const [customPresets, setCustomPresets] = useState<string[]>([])
   const [selectedPreset, setSelectedPreset] = useState<string>('default')
   const [selectedPresetSource, setSelectedPresetSource] = useState<PresetSource>('builtin')
@@ -60,6 +63,16 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
     setSaving(true)
     setError(null)
 
+    let finalContent = content
+    if (showFrontmatter && (fmTags.trim() || fmDate)) {
+      const { stringifyWithFrontmatter } = await import('@/lib/vault/frontmatter')
+      const tags = fmTags.split(',').map((t: string) => t.trim()).filter(Boolean)
+      finalContent = stringifyWithFrontmatter(
+        { tags, date: fmDate || undefined },
+        content
+      )
+    }
+
     try {
       const providedName = filename.trim()
 
@@ -70,7 +83,7 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
         const rawRes = await fetch('/api/notes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: 'raw', filename: `${providedName}-raw`, content }),
+          body: JSON.stringify({ folder: 'raw', filename: `${providedName}-raw`, content: finalContent }),
         })
         if (!rawRes.ok) {
           const d = await rawRes.json()
@@ -106,7 +119,7 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
         const tempRes = await fetch('/api/notes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: 'raw', filename: tempName, content }),
+          body: JSON.stringify({ folder: 'raw', filename: tempName, content: finalContent }),
         })
         if (!tempRes.ok) {
           const d = await tempRes.json()
@@ -136,7 +149,7 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
         await fetch('/api/notes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder: 'raw', filename: `${slug}-raw`, content }),
+          body: JSON.stringify({ folder: 'raw', filename: `${slug}-raw`, content: finalContent }),
         })
 
         // 4. Clean up temp note
@@ -219,6 +232,39 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: 
             <p className="mt-1 text-xs text-gray-700">
               Leave blank to use naming convention from preset. Raw note will be saved as <span className="text-gray-600 font-mono">name-raw.md</span>.
             </p>
+          </div>
+        </div>
+
+        {/* Frontmatter */}
+        <div className="flex gap-2 items-start">
+          <label className="text-xs text-gray-500 w-20 pt-1 shrink-0">Frontmatter</label>
+          <div className="flex-1 flex flex-col gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showFrontmatter}
+                onChange={e => setShowFrontmatter(e.target.checked)}
+                className="accent-blue-500"
+              />
+              <span className="text-xs text-gray-400">Add frontmatter</span>
+            </label>
+            {showFrontmatter && (
+              <div className="flex flex-col gap-2 pl-1">
+                <input
+                  type="text"
+                  value={fmTags}
+                  onChange={e => setFmTags(e.target.value)}
+                  placeholder="tags (comma-separated)"
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                />
+                <input
+                  type="date"
+                  value={fmDate}
+                  onChange={e => setFmDate(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+            )}
           </div>
         </div>
 

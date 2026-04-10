@@ -15,6 +15,7 @@ import VaultModeBanner from '@/components/VaultModeBanner'
 import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
 import ClipPanel from '@/components/ClipPanel'
+import TagBrowser from '@/components/TagBrowser'
 import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
@@ -50,6 +51,8 @@ export default function Home() {
   const [showRAG, setShowRAG] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showClip, setShowClip] = useState(false)
+  const [showTags, setShowTags] = useState(false)
+  const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
@@ -445,6 +448,15 @@ export default function Home() {
             Clip
           </button>
           <button
+            onClick={() => setShowTags(v => !v)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showTags ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="Browse tags"
+          >
+            Tags
+          </button>
+          <button
             onClick={() => setShowHelp(true)}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="Help"
@@ -511,6 +523,26 @@ export default function Home() {
                 </button>
               ))}
             </div>
+
+            {showTags && (
+              <div className="border-b border-gray-800 shrink-0" style={{ height: 200, overflow: 'hidden' }}>
+                <TagBrowser
+                  activeTag={activeTag}
+                  onTagSelect={setActiveTag}
+                />
+              </div>
+            )}
+            {activeTag && (
+              <div className="px-3 py-1.5 bg-blue-950/40 border-b border-blue-900 shrink-0 flex items-center justify-between">
+                <span className="text-xs text-blue-300">Filter: #{activeTag}</span>
+                <button
+                  onClick={() => setActiveTag(null)}
+                  className="text-xs text-blue-400 hover:text-blue-200"
+                >
+                  ×
+                </button>
+              </div>
+            )}
 
             {loading ? (
               <div className="flex-1 flex items-center justify-center">
