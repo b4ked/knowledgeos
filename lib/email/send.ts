@@ -6,13 +6,13 @@ function getTransport() {
     port: Number(process.env.SMTP_PORT ?? 587),
     secure: false, // STARTTLS on port 587
     auth: {
-      user: process.env.SMTP_USER ?? "hello@parrytech.co",
+      user: process.env.SMTP_USER ?? "knowledgeos@parrytech.co",
       pass: process.env.SMTP_PASS,
     },
   })
 }
 
-const FROM = process.env.FROM_EMAIL ?? "hello@parrytech.co"
+const FROM = process.env.FROM_EMAIL ?? "knowledgeos@parrytech.co"
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://knowledgeos.parrytech.co"
 
 export async function sendVerificationEmail({
