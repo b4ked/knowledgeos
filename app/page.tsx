@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
 import FolderTree from '@/components/FolderTree'
+import NewFolderDialog from '@/components/NewFolderDialog'
 import NoteViewer from '@/components/NoteViewer'
 import NewNotePanel from '@/components/NewNotePanel'
 import GraphView from '@/components/GraphView'
@@ -30,6 +31,8 @@ export default function Home() {
   const [noteContent, setNoteContent] = useState<string>('')
   const [panel, setPanel] = useState<Panel>('viewer')
   const [newNoteFolder, setNewNoteFolder] = useState<string | undefined>(undefined)
+  const [showNewFolder, setShowNewFolder] = useState(false)
+  const [newFolderParent, setNewFolderParent] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<NoteMetadata | null>(null)
   const [checkedSlugs, setCheckedSlugs] = useState<Set<string>>(new Set())
@@ -527,6 +530,10 @@ export default function Home() {
                   setShowGraph(false)
                   setPanel('new')
                 }}
+                onCreateFolder={(folderPath) => {
+                  setNewFolderParent(folderPath)
+                  setShowNewFolder(true)
+                }}
               />
             )}
 
@@ -737,6 +744,16 @@ export default function Home() {
             setShowClip(false)
             addToast(`Clipped → ${note.path}`, 'success')
           }}
+        />
+      )}
+
+      {/* New Folder dialog */}
+      {showNewFolder && (
+        <NewFolderDialog
+          parentPath={newFolderParent}
+          folder={folder}
+          onCreated={() => loadNotes(folder)}
+          onClose={() => { setShowNewFolder(false); setNewFolderParent(undefined) }}
         />
       )}
 

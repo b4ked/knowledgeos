@@ -12,6 +12,7 @@ interface FolderTreeProps {
   checked?: Set<string>
   onCheck?: (slug: string, checked: boolean) => void
   onCreateNote?: (folderPath?: string) => void
+  onCreateFolder?: (folderPath: string) => void
 }
 
 interface TreeFile {
@@ -64,6 +65,7 @@ function FolderNode({
   checked,
   onCheck,
   onCreateNote,
+  onCreateFolder,
   defaultOpen,
 }: {
   node: TreeNode
@@ -75,6 +77,7 @@ function FolderNode({
   checked?: Set<string>
   onCheck?: (slug: string, checked: boolean) => void
   onCreateNote?: (folderPath?: string) => void
+  onCreateFolder?: (folderPath: string) => void
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen ?? true)
@@ -139,6 +142,15 @@ function FolderNode({
             +
           </button>
         )}
+        {onCreateFolder && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onCreateFolder(node.path) }}
+            className="opacity-0 group-hover:opacity-100 text-yellow-700 hover:text-yellow-400 text-xs px-1 py-1 transition-opacity"
+            title={`New folder in ${node.name}`}
+          >
+            ⊕
+          </button>
+        )}
       </div>
       {open && (
         <ul>
@@ -154,6 +166,7 @@ function FolderNode({
               checked={checked}
               onCheck={onCheck}
               onCreateNote={onCreateNote}
+              onCreateFolder={onCreateFolder}
               defaultOpen={true}
             />
           ))}
@@ -172,6 +185,7 @@ export default function FolderTree({
   checked = new Set(),
   onCheck,
   onCreateNote,
+  onCreateFolder,
 }: FolderTreeProps) {
   if (notes.length === 0) {
     return (
@@ -210,6 +224,7 @@ export default function FolderTree({
             checked={checked}
             onCheck={onCheck}
             onCreateNote={onCreateNote}
+            onCreateFolder={onCreateFolder}
             defaultOpen={true}
           />
         ))}

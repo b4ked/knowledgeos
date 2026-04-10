@@ -11,7 +11,8 @@ export async function GET(request: Request) {
   const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.ensureDirectories()
   const notes = await adapter.listNotes(folder)
-  return Response.json(notes)
+  const filtered = notes.filter(n => n.filename !== '.keep' && !n.slug.endsWith('/.keep') && n.slug !== '.keep')
+  return Response.json(filtered)
 }
 
 export async function POST(request: Request) {
