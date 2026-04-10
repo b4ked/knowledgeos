@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core"
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -37,3 +37,16 @@ export const userPreferences = pgTable("user_preferences", {
   presets: jsonb("presets").default([]),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })
+
+export const vaultNotes = pgTable('vault_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  folder: text('folder').notNull(), // 'raw' | 'wiki'
+  slug: text('slug').notNull(),     // e.g. 'projects/my-note'
+  filename: text('filename').notNull(),
+  content: text('content').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('vault_notes_user_folder_slug_idx').on(t.userId, t.folder, t.slug),
+])

@@ -11,6 +11,7 @@ interface FolderTreeProps {
   checkable?: boolean
   checked?: Set<string>
   onCheck?: (slug: string, checked: boolean) => void
+  onCreateNote?: (folderPath?: string) => void
 }
 
 interface TreeFile {
@@ -22,6 +23,7 @@ interface TreeFile {
 interface TreeFolder {
   kind: 'folder'
   name: string
+  path: string
   children: TreeNode[]
 }
 
@@ -33,12 +35,14 @@ function buildTree(notes: NoteMetadata[]): TreeNode[] {
   for (const note of notes) {
     const parts = note.slug.split('/')
     let nodes = root
+    const pathParts: string[] = []
 
     for (let i = 0; i < parts.length - 1; i++) {
       const dirName = parts[i]
+      pathParts.push(dirName)
       let folder = nodes.find((n): n is TreeFolder => n.kind === 'folder' && n.name === dirName)
       if (!folder) {
-        folder = { kind: 'folder', name: dirName, children: [] }
+        folder = { kind: 'folder', name: dirName, path: pathParts.join('/'), children: [] }
         nodes.push(folder)
       }
       nodes = folder.children
@@ -59,6 +63,7 @@ function FolderNode({
   checkable,
   checked,
   onCheck,
+  onCreateNote,
   defaultOpen,
 }: {
   node: TreeNode
@@ -69,6 +74,7 @@ function FolderNode({
   checkable?: boolean
   checked?: Set<string>
   onCheck?: (slug: string, checked: boolean) => void
+  onCreateNote?: (folderPath?: string) => void
   defaultOpen?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen ?? true)
@@ -115,14 +121,25 @@ function FolderNode({
 
   return (
     <li>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full text-left py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
-        style={{ paddingLeft: indent + 8 }}
-      >
-        <span className="shrink-0">{open ? '▾' : '▸'}</span>
-        <span className="font-medium">{node.name}</span>
-      </button>
+      <div className="group flex items-center">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex-1 text-left py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+          style={{ paddingLeft: indent + 8 }}
+        >
+          <span className="shrink-0">{open ? '▾' : '▸'}</span>
+          <span className="font-medium">{node.name}</span>
+        </button>
+        {onCreateNote && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onCreateNote(node.path) }}
+            className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-gray-300 text-xs px-2 py-1 transition-opacity"
+            title={`New note in ${node.name}`}
+          >
+            +
+          </button>
+        )}
+      </div>
       {open && (
         <ul>
           {node.children.map((child, i) => (
@@ -136,6 +153,7 @@ function FolderNode({
               checkable={checkable}
               checked={checked}
               onCheck={onCheck}
+              onCreateNote={onCreateNote}
               defaultOpen={true}
             />
           ))}
@@ -153,6 +171,7 @@ export default function FolderTree({
   checkable = false,
   checked = new Set(),
   onCheck,
+  onCreateNote,
 }: FolderTreeProps) {
   if (notes.length === 0) {
     return (
@@ -165,21 +184,36 @@ export default function FolderTree({
   const tree = buildTree(notes)
 
   return (
-    <ul className="flex-1 overflow-y-auto py-1">
-      {tree.map((node, i) => (
-        <FolderNode
-          key={node.kind === 'file' ? node.note.path : `${node.name}-${i}`}
-          node={node}
-          depth={0}
-          selectedSlug={selectedSlug}
-          onSelect={onSelect}
-          onDelete={onDelete}
-          checkable={checkable}
-          checked={checked}
-          onCheck={onCheck}
-          defaultOpen={true}
-        />
-      ))}
-    </ul>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {onCreateNote && (
+        <div className="px-3 py-1.5 border-b border-gray-800 shrink-0">
+          <button
+            onClick={() => onCreateNote(undefined)}
+            className="w-full text-left text-xs text-gray-600 hover:text-gray-300 hover:bg-gray-800 px-2 py-1 rounded transition-colors flex items-center gap-1"
+            title="New note"
+          >
+            <span>+</span>
+            <span>New note</span>
+          </button>
+        </div>
+      )}
+      <ul className="flex-1 overflow-y-auto py-1">
+        {tree.map((node, i) => (
+          <FolderNode
+            key={node.kind === 'file' ? node.note.path : `${node.name}-${i}`}
+            node={node}
+            depth={0}
+            selectedSlug={selectedSlug}
+            onSelect={onSelect}
+            onDelete={onDelete}
+            checkable={checkable}
+            checked={checked}
+            onCheck={onCheck}
+            onCreateNote={onCreateNote}
+            defaultOpen={true}
+          />
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -13,6 +13,7 @@ import SettingsModal from '@/components/SettingsModal'
 import VaultModeBanner from '@/components/VaultModeBanner'
 import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
+import ClipPanel from '@/components/ClipPanel'
 import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
@@ -28,6 +29,7 @@ export default function Home() {
   const [selectedNote, setSelectedNote] = useState<NoteMetadata | null>(null)
   const [noteContent, setNoteContent] = useState<string>('')
   const [panel, setPanel] = useState<Panel>('viewer')
+  const [newNoteFolder, setNewNoteFolder] = useState<string | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<NoteMetadata | null>(null)
   const [checkedSlugs, setCheckedSlugs] = useState<Set<string>>(new Set())
@@ -44,6 +46,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showClip, setShowClip] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
@@ -197,6 +200,7 @@ export default function Home() {
     if (noteFolder !== folder) setFolder(noteFolder)
     loadNotes(noteFolder)
     setPanel('viewer')
+    setNewNoteFolder(undefined)
     handleSelectNote(note)
     if (showGraph) loadGraph()
     addToast(`Saved & compiled → ${note.slug}`, 'success')
@@ -429,6 +433,15 @@ export default function Home() {
             Settings
           </button>
           <button
+            onClick={() => setShowClip(true)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showClip ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="Clip URL or paste content to raw vault"
+          >
+            Clip
+          </button>
+          <button
             onClick={() => setShowHelp(true)}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="Help"
@@ -509,6 +522,11 @@ export default function Home() {
                 checkable={folder === 'raw'}
                 checked={checkedSlugs}
                 onCheck={handleCheck}
+                onCreateNote={(folderPath) => {
+                  setNewNoteFolder(folderPath)
+                  setShowGraph(false)
+                  setPanel('new')
+                }}
               />
             )}
 
@@ -589,13 +607,16 @@ export default function Home() {
               {panel === 'new' ? (
                 <NewNotePanel
                   onSave={handleNoteSaved}
-                  onCancel={() => setPanel('viewer')}
+                  onCancel={() => { setPanel('viewer'); setNewNoteFolder(undefined) }}
+                  defaultFolderPrefix={newNoteFolder}
                 />
               ) : selectedNote ? (
                 <NoteViewer
                   content={noteContent}
                   slug={selectedNote.slug}
+                  folder={folder}
                   onWikilinkClick={handleWikilinkClick}
+                  onContentSaved={(newContent) => setNoteContent(newContent)}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center">
@@ -704,6 +725,20 @@ export default function Home() {
 
       {/* RAG index panel */}
       {showRAG && <RAGPanel onClose={() => setShowRAG(false)} />}
+
+      {/* Clip panel */}
+      {showClip && (
+        <ClipPanel
+          onClose={() => setShowClip(false)}
+          onClipped={(note) => {
+            const noteFolder = note.folder as Folder
+            if (noteFolder !== folder) setFolder(noteFolder)
+            loadNotes(noteFolder)
+            setShowClip(false)
+            addToast(`Clipped → ${note.path}`, 'success')
+          }}
+        />
+      )}
 
       {/* Footer */}
       <footer className="shrink-0 flex items-center justify-center py-1.5 bg-gray-900 border-t border-gray-800">

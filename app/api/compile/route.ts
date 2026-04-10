@@ -1,8 +1,13 @@
 import path from 'path'
+import { auth } from '@/auth'
 import { compile } from '@/lib/compiler/compile'
 import { readSettings } from '@/lib/vault/settings'
+import { getAdapter } from '@/lib/vault/getAdapter'
 import type { Conventions } from '@/lib/conventions/types'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
+import { getLLMProvider } from '@/lib/llm/getLLMProvider'
+import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
+import { extractWikilinks } from '@/lib/compiler/compile'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -19,6 +24,42 @@ export async function POST(request: Request) {
     return Response.json({ error: 'notePaths must be a non-empty array' }, { status: 400 })
   }
 
+  const session = await auth()
+  const userId = session?.user?.id ?? undefined
+
+  // Cloud mode: use the database-backed adapter for authenticated users
+  if (userId) {
+    try {
+      const adapter = await getAdapter(userId)
+
+      // Read source notes from cloud adapter
+      const sources = await Promise.all(notePaths.map((p) => adapter.readNote(p)))
+
+      // Compile via LLM
+      const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
+      const llm = getLLMProvider(conventions ?? {})
+      const output = await llm.compile(sources, merged)
+
+      // Extract wikilinks from output
+      const wikilinks = extractWikilinks(output)
+
+      // Determine output slug/path
+      const slug = outputFilename
+        ? outputFilename.replace(/\.md$/, '')
+        : generateSlugFromOutput(notePaths, output)
+      const outputPath = `wiki/${slug}.md`
+
+      // Write compiled note back to cloud adapter
+      await adapter.writeNote(outputPath, output)
+
+      return Response.json({ outputPath, slug, wikilinks }, { status: 200 })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Compilation failed'
+      return Response.json({ error: message }, { status: 500 })
+    }
+  }
+
+  // Local/remote mode: use filesystem-based compile
   const vaultPath = process.env.VAULT_PATH
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')
@@ -34,4 +75,23 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : 'Compilation failed'
     return Response.json({ error: message }, { status: 500 })
   }
+}
+
+function generateSlugFromOutput(notePaths: string[], output?: string): string {
+  if (output) {
+    const headingMatch = output.match(/^#{1,3}\s+(.+)$/m)
+    if (headingMatch) {
+      const slug = headingMatch[1]
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 80)
+      if (slug) return slug
+    }
+  }
+  const base = path.basename(notePaths[0], '.md').replace(/[_\-]?temp[_\-]\d+/i, '').replace(/^[-_]|[-_]$/g, '') || 'note'
+  if (notePaths.length === 1) return base
+  const second = path.basename(notePaths[1], '.md')
+  return `${base}+${second}`
 }

@@ -206,18 +206,32 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-300 font-medium">
-                        {vaultMode === 'local' ? 'Local vault (your computer)' : 'Demo vault (remote server)'}
+                        {vaultMode === 'local'
+                          ? 'Local vault (your computer)'
+                          : vaultMode === 'cloud'
+                          ? 'Cloud vault (your account)'
+                          : 'Demo vault (remote server)'}
                       </p>
                       <p className="text-xs text-gray-600 mt-0.5">
                         {vaultMode === 'local'
                           ? 'Reading files directly from your local folder'
+                          : vaultMode === 'cloud'
+                          ? 'Notes stored securely in your account on the server'
                           : 'Using the example vault on the demo server'}
                       </p>
                     </div>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${vaultMode === 'local' ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        vaultMode === 'local'
+                          ? 'bg-emerald-400'
+                          : vaultMode === 'cloud'
+                          ? 'bg-blue-400'
+                          : 'bg-gray-600'
+                      }`}
+                    />
                   </div>
 
-                  {vaultMode === 'local' ? (
+                  {vaultMode === 'local' || vaultMode === 'cloud' ? (
                     <button
                       onClick={() => { onVaultModeChange('remote'); onClose() }}
                       className="w-full px-3 py-2 text-xs font-medium rounded bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors border border-gray-700"
@@ -227,7 +241,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                   ) : !session?.user && sessionStatus !== 'loading' ? (
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 space-y-2">
                       <p className="text-xs text-gray-400">
-                        A free account is required to use local vault mode.
+                        A free account is required to use local or cloud vault mode.
                       </p>
                       <div className="flex gap-2">
                         <Link
@@ -246,18 +260,28 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                         </Link>
                       </div>
                     </div>
-                  ) : isFSAccessSupported() ? (
-                    <button
-                      onClick={handlePickLocalVault}
-                      disabled={pickingFolder}
-                      className="w-full px-3 py-2 text-xs font-medium rounded bg-emerald-900 text-emerald-200 hover:bg-emerald-800 disabled:opacity-40 transition-colors"
-                    >
-                      {pickingFolder ? 'Selecting folder…' : 'Switch to local vault'}
-                    </button>
                   ) : (
-                    <p className="text-xs text-amber-500">
-                      Local vault is not supported in this browser. Use Chrome or Edge.
-                    </p>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => { onVaultModeChange('cloud'); onClose() }}
+                        className="w-full px-3 py-2 text-xs font-medium rounded bg-blue-900 text-blue-200 hover:bg-blue-800 transition-colors"
+                      >
+                        Use cloud vault
+                      </button>
+                      {isFSAccessSupported() ? (
+                        <button
+                          onClick={handlePickLocalVault}
+                          disabled={pickingFolder}
+                          className="w-full px-3 py-2 text-xs font-medium rounded bg-emerald-900 text-emerald-200 hover:bg-emerald-800 disabled:opacity-40 transition-colors"
+                        >
+                          {pickingFolder ? 'Selecting folder…' : 'Switch to local vault'}
+                        </button>
+                      ) : (
+                        <p className="text-xs text-amber-500">
+                          Local vault is not supported in this browser. Use Chrome or Edge.
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </section>

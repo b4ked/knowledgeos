@@ -1,3 +1,4 @@
+import { auth } from '@/auth'
 import { getAdapter } from '@/lib/vault/getAdapter'
 
 export async function GET(request: Request) {
@@ -6,7 +7,8 @@ export async function GET(request: Request) {
     return Response.json({ error: 'folder must be raw or wiki' }, { status: 400 })
   }
 
-  const adapter = await getAdapter()
+  const session = await auth()
+  const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.ensureDirectories()
   const notes = await adapter.listNotes(folder)
   return Response.json(notes)
@@ -29,7 +31,8 @@ export async function POST(request: Request) {
   const safeFilename = filename.endsWith('.md') ? filename : `${filename}.md`
   const notePath = `${folder}/${safeFilename}`
 
-  const adapter = await getAdapter()
+  const session = await auth()
+  const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.ensureDirectories()
   await adapter.writeNote(notePath, content)
 

@@ -8,12 +8,13 @@ import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 interface NewNotePanelProps {
   onSave: (note: NoteMetadata) => void
   onCancel: () => void
+  defaultFolderPrefix?: string
 }
 
 type PresetSource = 'builtin' | 'custom'
 
-export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
-  const [filename, setFilename] = useState('')
+export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix }: NewNotePanelProps) {
+  const [filename, setFilename] = useState(() => defaultFolderPrefix ? `${defaultFolderPrefix}/` : '')
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -28,6 +29,15 @@ export default function NewNotePanel({ onSave, onCancel }: NewNotePanelProps) {
       .then((data: { names: string[] }) => setCustomPresets(data.names ?? []))
       .catch(() => { /* silent */ })
   }, [])
+
+  // Pre-fill filename when folder prefix changes (e.g. when opened from folder "+" button)
+  useEffect(() => {
+    if (defaultFolderPrefix) {
+      setFilename(`${defaultFolderPrefix}/`)
+    } else {
+      setFilename('')
+    }
+  }, [defaultFolderPrefix])
 
   async function selectBuiltIn(key: string) {
     setSelectedPreset(key)

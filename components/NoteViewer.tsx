@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
@@ -7,7 +8,9 @@ import type { Components } from 'react-markdown'
 interface NoteViewerProps {
   content: string
   slug: string
+  folder?: 'raw' | 'wiki'
   onWikilinkClick?: (slug: string) => void
+  onContentSaved?: (newContent: string) => void
 }
 
 function wikilinkToSlug(label: string): string {
@@ -96,18 +99,138 @@ function makeComponents(onWikilinkClick?: (slug: string) => void): Components {
   }
 }
 
-export default function NoteViewer({ content, slug, onWikilinkClick }: NoteViewerProps) {
+export default function NoteViewer({ content, slug, folder, onWikilinkClick, onContentSaved }: NoteViewerProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(content)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Sync editContent when note changes
+  useEffect(() => {
+    setEditContent(content)
+    setIsEditing(false)
+  }, [content])
+
+  const handleSave = useCallback(async () => {
+    if (!folder || !slug) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent }),
+      })
+      if (!res.ok) throw new Error('Save failed')
+      setIsEditing(false)
+      onContentSaved?.(editContent)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }, [folder, slug, editContent, onContentSaved])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!isEditing) return
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+      if (e.key === 'Escape') {
+        setIsEditing(false)
+        setEditContent(content)
+        setSaveError(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isEditing, handleSave, content])
+
   const components = makeComponents(onWikilinkClick)
+
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-3 border-b border-gray-800 shrink-0">
+      <div className="px-6 py-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-400">{slug}</h2>
+        {folder && (
+          <button
+            onClick={() => {
+              if (isEditing) {
+                setIsEditing(false)
+                setEditContent(content)
+                setSaveError(null)
+              } else {
+                setIsEditing(true)
+              }
+            }}
+            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-gray-800 transition-colors flex items-center gap-1"
+            title={isEditing ? 'Back to preview' : 'Edit note'}
+          >
+            {isEditing ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                </svg>
+                Preview
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+                Edit
+              </>
+            )}
+          </button>
+        )}
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-          {content}
-        </ReactMarkdown>
-      </div>
+
+      {isEditing ? (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            className="flex-1 font-mono text-sm bg-gray-950 text-gray-200 p-4 resize-none w-full outline-none border-0"
+            spellCheck={false}
+            autoFocus
+          />
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-t border-gray-800 bg-gray-900">
+            {saveError && (
+              <span className="text-xs text-red-400 flex-1">{saveError}</span>
+            )}
+            {!saveError && (
+              <span className="text-xs text-gray-600 flex-1">⌘S to save · Esc to cancel</span>
+            )}
+            <button
+              onClick={() => {
+                setIsEditing(false)
+                setEditContent(content)
+                setSaveError(null)
+              }}
+              className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-3 py-1 text-xs font-medium bg-blue-900 text-blue-200 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {content}
+          </ReactMarkdown>
+        </div>
+      )}
     </div>
   )
 }

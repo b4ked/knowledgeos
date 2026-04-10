@@ -1,10 +1,17 @@
 import path from 'path'
 import { LocalVaultAdapter } from './LocalVaultAdapter'
 import { RemoteVaultAdapter } from './RemoteVaultAdapter'
+import { CloudVaultAdapter } from './CloudVaultAdapter'
 import { readSettings } from './settings'
 import type { VaultAdapter } from './VaultAdapter'
+import { db } from '@/lib/db'
 
-export async function getAdapter(): Promise<VaultAdapter> {
+export async function getAdapter(userId?: string): Promise<VaultAdapter> {
+  // If a userId is provided, use the cloud (database-backed) adapter
+  if (userId) {
+    return new CloudVaultAdapter(db, userId)
+  }
+
   const mode = process.env.VAULT_MODE ?? 'local'
 
   if (mode === 'remote') {
