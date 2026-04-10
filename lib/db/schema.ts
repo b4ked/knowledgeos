@@ -35,6 +35,7 @@ export const userPreferences = pgTable("user_preferences", {
   llmProvider: text("llm_provider").default("openai"),
   conventions: jsonb("conventions").default({}),
   presets: jsonb("presets").default([]),
+  vaultMode: text("vault_mode").default("cloud"), // 'cloud' | 'local'
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })
 

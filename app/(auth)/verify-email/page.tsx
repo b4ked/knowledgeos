@@ -48,10 +48,10 @@ function VerifyEmailContent() {
           <h2 className="text-sm font-semibold text-gray-100 mb-2">Email verified</h2>
           <p className="text-xs text-gray-400 mb-4">{message}</p>
           <Link
-            href="/login"
+            href="/vault-setup"
             className="inline-block bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
           >
-            Sign in to KnowledgeOS
+            Choose your vault →
           </Link>
         </>
       )}

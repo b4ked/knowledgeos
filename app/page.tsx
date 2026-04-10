@@ -57,6 +57,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
+  const [vaultModeLoaded, setVaultModeLoaded] = useState(false)
   const browserAdapterRef = useRef<BrowserVaultAdapter | null>(null)
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(320)
@@ -71,7 +72,31 @@ export default function Home() {
   function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
     browserAdapterRef.current = adapter ?? null
     setVaultMode(mode)
+    // Persist preference for authenticated users
+    if (mode === 'cloud' || mode === 'local') {
+      fetch('/api/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vaultMode: mode }),
+      }).catch(() => { /* non-fatal */ })
+    }
   }
+
+  // Load vault mode preference for authenticated users
+  useEffect(() => {
+    fetch('/api/preferences')
+      .then((r) => {
+        if (!r.ok) return null
+        return r.json() as Promise<{ vaultMode: string }>
+      })
+      .then((prefs) => {
+        if (prefs?.vaultMode === 'cloud' || prefs?.vaultMode === 'local') {
+          setVaultMode(prefs.vaultMode as VaultMode)
+        }
+      })
+      .catch(() => { /* not authenticated — keep default */ })
+      .finally(() => setVaultModeLoaded(true))
+  }, [])
 
   // Load custom presets list for sidebar compile selector
   useEffect(() => {
