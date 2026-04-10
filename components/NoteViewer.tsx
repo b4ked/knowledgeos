@@ -99,11 +99,14 @@ function makeComponents(onWikilinkClick?: (slug: string) => void): Components {
   }
 }
 
+type SplitMode = 'split' | 'editor'
+
 export default function NoteViewer({ content, slug, folder, onWikilinkClick, onContentSaved }: NoteViewerProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [splitMode, setSplitMode] = useState<SplitMode>('split')
 
   // Sync editContent when note changes
   useEffect(() => {
@@ -155,49 +158,99 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
     <div className="flex flex-col h-full">
       <div className="px-6 py-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-400">{slug}</h2>
-        {folder && (
-          <button
-            onClick={() => {
-              if (isEditing) {
-                setIsEditing(false)
-                setEditContent(content)
-                setSaveError(null)
-              } else {
-                setIsEditing(true)
-              }
-            }}
-            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-gray-800 transition-colors flex items-center gap-1"
-            title={isEditing ? 'Back to preview' : 'Edit note'}
-          >
-            {isEditing ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                </svg>
-                Preview
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-                Edit
-              </>
-            )}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <div className="flex items-center gap-1 mr-2">
+              <button
+                onClick={() => setSplitMode('split')}
+                className={`text-xs px-2 py-1 rounded transition-colors ${
+                  splitMode === 'split'
+                    ? 'bg-gray-700 text-gray-200'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                Split
+              </button>
+              <button
+                onClick={() => setSplitMode('editor')}
+                className={`text-xs px-2 py-1 rounded transition-colors ${
+                  splitMode === 'editor'
+                    ? 'bg-gray-700 text-gray-200'
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                Editor only
+              </button>
+            </div>
+          )}
+          {folder && (
+            <button
+              onClick={() => {
+                if (isEditing) {
+                  setIsEditing(false)
+                  setEditContent(content)
+                  setSaveError(null)
+                } else {
+                  setIsEditing(true)
+                }
+              }}
+              className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-gray-800 transition-colors flex items-center gap-1"
+              title={isEditing ? 'Back to preview' : 'Edit note'}
+            >
+              {isEditing ? (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                  </svg>
+                  Preview
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  </svg>
+                  Edit
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {isEditing ? (
         <div className="flex flex-col flex-1 overflow-hidden">
-          <textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="flex-1 font-mono text-sm bg-gray-950 text-gray-200 p-4 resize-none w-full outline-none border-0"
-            spellCheck={false}
-            autoFocus
-          />
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left pane: raw markdown editor */}
+            <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+              <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
+                <span className="text-xs text-gray-500 font-medium">Edit</span>
+              </div>
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="flex-1 font-mono text-sm bg-gray-950 text-gray-200 p-4 resize-none w-full h-full outline-none border-0 border-r border-gray-800"
+                spellCheck={false}
+                autoFocus
+              />
+            </div>
+
+            {/* Right pane: live preview (only shown in split mode) */}
+            {splitMode === 'split' && (
+              <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+                <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
+                  <span className="text-xs text-gray-500 font-medium">Preview</span>
+                </div>
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+                    {editContent}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom toolbar */}
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-t border-gray-800 bg-gray-900">
             {saveError && (
               <span className="text-xs text-red-400 flex-1">{saveError}</span>
