@@ -17,6 +17,7 @@ import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
+import UserMenu from '@/components/UserMenu'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -434,6 +435,9 @@ export default function Home() {
           >
             Help
           </button>
+          <div className="ml-2 pl-2 border-l border-gray-800">
+            <UserMenu />
+          </div>
         </div>
       </header>
 

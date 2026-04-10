@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import Link from 'next/link'
 import { isFSAccessSupported, pickVaultFolder, BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 import type { VaultMode } from './VaultModeBanner'
 
@@ -32,6 +34,7 @@ interface FolderTokeniseState {
 }
 
 export default function SettingsModal({ onClose, onSaved, onError, vaultMode, onVaultModeChange }: SettingsModalProps) {
+  const { data: session, status: sessionStatus } = useSession()
   const [rawPath, setRawPath] = useState('')
   const [wikiPath, setWikiPath] = useState('')
   const [presetsPath, setPresetsPath] = useState('')
@@ -221,6 +224,28 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                     >
                       Switch to demo vault
                     </button>
+                  ) : !session?.user && sessionStatus !== 'loading' ? (
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 space-y-2">
+                      <p className="text-xs text-gray-400">
+                        A free account is required to use local vault mode.
+                      </p>
+                      <div className="flex gap-2">
+                        <Link
+                          href="/signup"
+                          onClick={onClose}
+                          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                        >
+                          Create free account
+                        </Link>
+                        <Link
+                          href="/login"
+                          onClick={onClose}
+                          className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-700 rounded transition-colors"
+                        >
+                          Sign in
+                        </Link>
+                      </div>
+                    </div>
                   ) : isFSAccessSupported() ? (
                     <button
                       onClick={handlePickLocalVault}

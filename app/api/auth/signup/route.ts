@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { users, emailVerificationTokens } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
+import bcrypt from "bcryptjs"
+import { randomBytes } from "crypto"
+import { sendVerificationEmail } from "@/lib/email/send"
+
+export async function POST(req: NextRequest) {
+  try {
+    const { email, password, name } = await req.json()
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+    }
+
+    if (password.length < 8) {
+      return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 })
+    }
+
+    const normalizedEmail = email.toLowerCase().trim()
+
+    const existing = await db.query.users.findFirst({
+      where: eq(users.email, normalizedEmail),
+    })
+    if (existing) {
+      return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12)
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: normalizedEmail,
+        hashedPassword,
+        name: name?.trim() || null,
+        emailVerified: false,
+        plan: "free",
+      })
+      .returning()
+
+    const token = randomBytes(32).toString("hex")
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+    await db.insert(emailVerificationTokens).values({
+      userId: user.id,
+      token,
+      expiresAt,
+    })
+
+    await sendVerificationEmail({ email: normalizedEmail, name: user.name, token })
+
+    return NextResponse.json(
+      { message: "Account created. Check your email to verify your address." },
+      { status: 201 }
+    )
+  } catch (err) {
+    console.error("Signup error:", err)
+    return NextResponse.json({ error: "Could not create account. Please try again." }, { status: 500 })
+  }
+}
