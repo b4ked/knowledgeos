@@ -1,10 +1,18 @@
-import { Resend } from "resend"
+import nodemailer from "nodemailer"
 
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY ?? "re_placeholder")
+function getTransport() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? "mail.purelymail.com",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: false, // STARTTLS on port 587
+    auth: {
+      user: process.env.SMTP_USER ?? "hello@parrytech.co",
+      pass: process.env.SMTP_PASS,
+    },
+  })
 }
 
-const FROM = process.env.FROM_EMAIL ?? "noreply@knowledgeos.parrytech.co"
+const FROM = process.env.FROM_EMAIL ?? "hello@parrytech.co"
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://knowledgeos.parrytech.co"
 
 export async function sendVerificationEmail({
@@ -17,8 +25,8 @@ export async function sendVerificationEmail({
   token: string
 }) {
   const verifyUrl = `${APP_URL}/verify-email?token=${token}`
-  await getResend().emails.send({
-    from: FROM,
+  await getTransport().sendMail({
+    from: `"KnowledgeOS" <${FROM}>`,
     to: email,
     subject: "Verify your KnowledgeOS account",
     html: `
@@ -48,8 +56,8 @@ export async function sendPasswordResetEmail({
   token: string
 }) {
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
-  await getResend().emails.send({
-    from: FROM,
+  await getTransport().sendMail({
+    from: `"KnowledgeOS" <${FROM}>`,
     to: email,
     subject: "Reset your KnowledgeOS password",
     html: `
@@ -77,8 +85,8 @@ export async function sendWelcomeEmail({
   email: string
   name?: string | null
 }) {
-  await getResend().emails.send({
-    from: FROM,
+  await getTransport().sendMail({
+    from: `"KnowledgeOS" <${FROM}>`,
     to: email,
     subject: "Welcome to KnowledgeOS",
     html: `
