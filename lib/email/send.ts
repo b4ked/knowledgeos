@@ -1,10 +1,16 @@
 import nodemailer from "nodemailer"
 
 function getTransport() {
+  const port = Number(process.env.SMTP_PORT ?? 465)
+  const secure = process.env.SMTP_SECURE
+    ? process.env.SMTP_SECURE === "true"
+    : port === 465
+
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? "mail.purelymail.com",
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: false, // STARTTLS on port 587
+    host: process.env.SMTP_HOST ?? "smtp.purelymail.com",
+    port,
+    secure,
+    requireTLS: !secure,
     auth: {
       user: process.env.SMTP_USER ?? "knowledgeos@parrytech.co",
       pass: process.env.SMTP_PASS,
@@ -13,7 +19,7 @@ function getTransport() {
 }
 
 const FROM = process.env.FROM_EMAIL ?? "knowledgeos@parrytech.co"
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://knowledgeos.parrytech.co"
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://knoswmba.parrytech.co"
 
 export async function sendVerificationEmail({
   email,
