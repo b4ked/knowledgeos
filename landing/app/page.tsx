@@ -116,73 +116,83 @@ const plans = [
     period: 'forever',
     description: 'Try the demo vault, or connect your own local folder using the browser. No card required.',
     highlight: false,
+    comingSoon: false,
     cta: 'Get started free',
     ctaHref: SIGNUP_URL,
     features: [
       'Full access to demo vault',
       'Local vault mode (Chrome/Edge)',
-      'AI compilation (uses your own API key)',
+      'AI compilation',
       'Knowledge graph',
       'RAG chat',
+      'Custom presets',
       'Obsidian-compatible export',
-      'No cloud storage',
     ],
-    missing: ['Personal cloud vault', 'Managed AI (no key needed)', 'Custom presets sync'],
+    missing: ['Higher daily limits', 'Priority support'],
   },
   {
     name: 'Starter',
-    price: '£9',
+    price: '£10',
     period: 'per month',
-    description: 'Your own personal cloud vault, hosted and managed. No API key needed — AI is included.',
+    description: 'Everything you need to build a serious knowledge base. 100 actions per day.',
     highlight: false,
+    comingSoon: false,
     cta: 'Start Starter',
     ctaHref: SIGNUP_URL,
     features: [
       'Everything in Free',
-      'Personal cloud vault (hosted)',
-      'Managed AI — no API key needed',
-      '50 compilations per month',
-      '200 chat queries per month',
-      'Custom presets (saved to cloud)',
+      '100 chats + compilations per day',
       'Email support',
     ],
-    missing: ['Team workspaces', 'Priority support'],
+    missing: ['Priority support', 'Early access to new features'],
   },
   {
     name: 'Pro',
-    price: '£29',
+    price: '£40',
     period: 'per month',
-    description: 'Serious knowledge work. Higher limits, priority support, and advanced conventions.',
+    description: 'Serious knowledge work at full speed. 500 actions per day with priority support.',
     highlight: true,
+    comingSoon: false,
     cta: 'Start Pro',
     ctaHref: SIGNUP_URL,
     features: [
       'Everything in Starter',
-      '250 compilations per month',
-      '1,000 chat queries per month',
-      'Advanced presets & conventions',
+      '500 chats + compilations per day',
       'Usage analytics dashboard',
       'Priority email support',
       'Early access to new features',
     ],
-    missing: ['Team workspaces'],
+    missing: [],
   },
   {
-    name: 'Team',
-    price: '£79',
+    name: 'Expert',
+    price: '£80',
     period: 'per month',
-    description: 'Shared vaults for small teams. Up to 5 users, admin controls, and dedicated support.',
+    description: 'Maximum throughput for power users. 1,000 actions per day.',
     highlight: false,
-    cta: 'Start Team',
+    comingSoon: false,
+    cta: 'Start Expert',
     ctaHref: SIGNUP_URL,
     features: [
       'Everything in Pro',
-      'Up to 5 team members',
-      'Shared team vault',
-      'Admin controls & user management',
-      'Per-member usage tracking',
-      '500 compilations per month (shared)',
-      '2,000 chat queries per month (shared)',
+      '1,000 chats + compilations per day',
+    ],
+    missing: [],
+  },
+  {
+    name: 'Team',
+    price: '£120',
+    period: 'per month',
+    description: '3 members all on Expert, plus collaboration features and additional seats at cost.',
+    highlight: false,
+    comingSoon: true,
+    cta: 'Coming soon',
+    ctaHref: '#',
+    features: [
+      '3 team members included',
+      'All members on Expert limits',
+      'Collaboration features',
+      'Additional members at cost',
       'Dedicated support',
     ],
     missing: [],
@@ -193,7 +203,7 @@ const faqs = [
   {
     question: 'What AI models does KnowledgeOS use?',
     answer:
-      'On managed plans (Starter, Pro, Team), KnowledgeOS uses OpenAI GPT-4o and text-embedding-3-small — no API key needed. On the Free plan (local mode), you can use your own Anthropic or OpenAI API key and choose your preferred model.',
+      'KnowledgeOS uses OpenAI GPT-4o and text-embedding-3-small for compilation and chat — no API key needed on any plan. AI is fully managed.',
   },
   {
     question: 'Is my data private?',
@@ -218,7 +228,7 @@ const faqs = [
   {
     question: 'What is the local vault mode?',
     answer:
-      'Local mode lets you point KnowledgeOS at a folder on your own machine. The browser reads and writes markdown files directly using the File System Access API — no files are uploaded. This works on Chrome and Edge. AI compilation still calls our server-side API (on paid plans) or your own API key (Free plan).',
+      'Local mode lets you point KnowledgeOS at a folder on your own machine. The browser reads and writes markdown files directly using the File System Access API — no files are uploaded. This works on Chrome and Edge. AI compilation calls our managed API on all plans.',
   },
 ]
 
@@ -550,13 +560,12 @@ function Pricing() {
           <p className="text-sm font-semibold text-blue-400 uppercase tracking-widest mb-4">Pricing</p>
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Simple, transparent pricing</h2>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-            Start free with your own API key and local vault. Upgrade for hosted storage, managed AI,
-            and higher limits.
+            Start free. Upgrade for higher daily limits. All plans include managed AI — no API key needed.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {plans.map((plan) => (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+          {plans.slice(0, 3).map((plan) => (
             <div
               key={plan.name}
               className={`relative p-6 rounded-2xl border flex flex-col ${
@@ -600,6 +609,60 @@ function Pricing() {
                 className={`block text-center py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   plan.highlight
                     ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                    : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700'
+                }`}
+              >
+                {plan.cta}
+              </a>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {plans.slice(3).map((plan) => (
+            <div
+              key={plan.name}
+              className={`relative p-6 rounded-2xl border flex flex-col ${
+                plan.comingSoon
+                  ? 'bg-gray-900/60 border-gray-800/60 opacity-80'
+                  : 'bg-gray-900 border-gray-800'
+              }`}
+            >
+              {plan.comingSoon && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gray-700 text-gray-300 text-xs font-semibold px-3 py-1 rounded-full">
+                  Coming soon
+                </div>
+              )}
+
+              <div className="mb-6">
+                <h3 className="text-white font-semibold text-lg mb-1">{plan.name}</h3>
+                <div className="flex items-baseline gap-1 mb-3">
+                  <span className="text-3xl font-bold text-white">{plan.price}</span>
+                  <span className="text-gray-500 text-sm">/{plan.period}</span>
+                </div>
+                <p className="text-gray-400 text-sm leading-relaxed">{plan.description}</p>
+              </div>
+
+              <ul className="space-y-2 mb-8 flex-1">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
+                    <span className="text-green-400 mt-0.5 shrink-0">✓</span>
+                    {f}
+                  </li>
+                ))}
+                {plan.missing.map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-600">
+                    <span className="mt-0.5 shrink-0">–</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              <a
+                href={plan.comingSoon ? '#' : plan.ctaHref}
+                className={`block text-center py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  plan.comingSoon
+                    ? 'bg-gray-800/60 text-gray-500 border border-gray-700/60 cursor-default'
                     : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700'
                 }`}
               >
