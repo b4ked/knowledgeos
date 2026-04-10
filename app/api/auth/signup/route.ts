@@ -64,7 +64,12 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
-    console.error("Signup error:", err)
-    return NextResponse.json({ error: "Could not create account. Please try again." }, { status: 500 })
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("Signup error:", msg)
+    // Surface DB connection issues clearly in dev/prod logs
+    if (msg.includes("connect") || msg.includes("DATABASE") || msg.includes("relation") || msg.includes("ECONNREFUSED")) {
+      return NextResponse.json({ error: `Database error: ${msg}` }, { status: 500 })
+    }
+    return NextResponse.json({ error: `Could not create account: ${msg}` }, { status: 500 })
   }
 }
