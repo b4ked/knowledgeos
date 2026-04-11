@@ -260,40 +260,54 @@ export default function Home() {
       return { indexed: 0, skipped, total: notes.length, errors: [] }
     }
 
-    const res = await fetch('/api/embeddings/index', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder, notes: changedNotes }),
-    })
-    const data = await res.json() as {
-      indexed?: number
-      skipped?: number
-      total?: number
-      errors?: string[]
-      entries?: Array<{ slug: string; contentHash: string; embedding: number[]; updatedAt: string }>
-      meta?: { provider: string; model: string; updatedAt: string }
-      error?: string
-    }
-    if (!res.ok || !data.entries || !data.meta) {
-      throw new Error(data.error ?? 'Tokenisation failed')
+    type EmbedEntry = { slug: string; contentHash: string; embedding: number[]; updatedAt: string }
+    type EmbedMeta = { provider: string; model: string; updatedAt: string }
+    const allEntries: EmbedEntry[] = []
+    const allErrors: string[] = []
+    let totalIndexed = 0
+    let lastMeta: EmbedMeta | undefined
+
+    // Process in batches of 5 to avoid Vercel serverless timeouts and large payloads
+    const BATCH_SIZE = 5
+    for (let i = 0; i < changedNotes.length; i += BATCH_SIZE) {
+      const batch = changedNotes.slice(i, i + BATCH_SIZE)
+      const res = await fetch('/api/embeddings/index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder, notes: batch }),
+      })
+      const data = await res.json() as {
+        indexed?: number
+        errors?: string[]
+        entries?: EmbedEntry[]
+        meta?: EmbedMeta
+        error?: string
+      }
+      if (!res.ok || !data.entries || !data.meta) {
+        throw new Error(data.error ?? 'Tokenisation failed')
+      }
+      allEntries.push(...data.entries)
+      allErrors.push(...(data.errors ?? []))
+      totalIndexed += data.indexed ?? data.entries.length
+      lastMeta = data.meta
     }
 
     await writeLocalRagEntries(
       folder,
-      data.entries.map((entry) => ({
+      allEntries.map((entry) => ({
         slug: entry.slug,
         contentHash: entry.contentHash,
         embedding: entry.embedding,
         updatedAt: entry.updatedAt,
       }))
     )
-    await writeLocalRagMeta(folder, data.meta)
+    if (lastMeta) await writeLocalRagMeta(folder, lastMeta)
 
     return {
-      indexed: data.indexed ?? data.entries.length,
+      indexed: totalIndexed,
       skipped,
       total: notes.length,
-      errors: data.errors ?? [],
+      errors: allErrors,
     }
   }, [])
 
