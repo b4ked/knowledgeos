@@ -16,7 +16,10 @@ interface SettingsModalProps {
   onSaved?: (msg: string) => void
   onError?: (msg: string) => void
   vaultMode: VaultMode
-  onVaultModeChange: (mode: VaultMode, adapter?: BrowserVaultAdapter) => void
+  browserAdapter?: BrowserVaultAdapter | null
+  onVaultModeChange: (mode: VaultMode, adapter?: BrowserVaultAdapter) => void | Promise<void>
+  onLocalTokenise?: (folder: 'raw' | 'wiki') => Promise<TokeniseResult>
+  onLocalClearRag?: () => Promise<void>
 }
 
 interface Settings {
@@ -38,7 +41,16 @@ interface FolderTokeniseState {
   error?: string
 }
 
-export default function SettingsModal({ onClose, onSaved, onError, vaultMode, onVaultModeChange }: SettingsModalProps) {
+export default function SettingsModal({
+  onClose,
+  onSaved,
+  onError,
+  vaultMode,
+  browserAdapter,
+  onVaultModeChange,
+  onLocalTokenise,
+  onLocalClearRag,
+}: SettingsModalProps) {
   const { data: session, status: sessionStatus } = useSession()
   const [rawPath, setRawPath] = useState('')
   const [wikiPath, setWikiPath] = useState('')
@@ -70,7 +82,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
       const adapter = new BrowserVaultAdapter(dirHandle)
       await adapter.ensureDirectories()
       await saveVaultFolderHandle(dirHandle).catch(() => {})
-      onVaultModeChange('local', adapter)
+      await onVaultModeChange('local', adapter)
       onSaved?.('Switched to local vault')
       onClose()
     } catch (err) {
@@ -107,32 +119,52 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
     const setState = folder === 'raw' ? setRawTokenise : setWikiTokenise
     setState({ status: 'running' })
     try {
-      const res = await fetch('/api/embeddings/index', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder }),
-      })
-      const data = await res.json() as TokeniseResult & { error?: string }
-      if (!res.ok) {
-        setState({ status: 'error', error: data.error ?? 'Tokenisation failed' })
+      if (vaultMode === 'local') {
+        if (!onLocalTokenise) {
+          setState({ status: 'error', error: 'Local vault is not connected' })
+          return
+        }
+        const result = await onLocalTokenise(folder)
+        setState({ status: 'done', result })
       } else {
-        setState({ status: 'done', result: data })
+        const res = await fetch('/api/embeddings/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder }),
+        })
+        const data = await res.json() as TokeniseResult & { error?: string }
+        if (!res.ok) {
+          setState({ status: 'error', error: data.error ?? 'Tokenisation failed' })
+        } else {
+          setState({ status: 'done', result: data })
+        }
       }
-    } catch {
-      setState({ status: 'error', error: 'Network error' })
+    } catch (err) {
+      setState({ status: 'error', error: err instanceof Error ? err.message : 'Network error' })
     }
   }
 
   async function handleClearConfirmed() {
     setClearing(true)
     try {
-      const res = await fetch('/api/embeddings/clear', { method: 'DELETE' })
-      if (res.ok) {
+      if (vaultMode === 'local') {
+        if (!onLocalClearRag) {
+          onError?.('Local RAG database is not available')
+          return
+        }
+        await onLocalClearRag()
         onSaved?.('RAG database cleared')
         setRawTokenise({ status: 'idle' })
         setWikiTokenise({ status: 'idle' })
       } else {
-        onError?.('Failed to clear RAG database')
+        const res = await fetch('/api/embeddings/clear', { method: 'DELETE' })
+        if (res.ok) {
+          onSaved?.('RAG database cleared')
+          setRawTokenise({ status: 'idle' })
+          setWikiTokenise({ status: 'idle' })
+        } else {
+          onError?.('Failed to clear RAG database')
+        }
       }
     } catch {
       onError?.('Network error — could not clear database')
@@ -237,14 +269,7 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                     />
                   </div>
 
-                  {vaultMode === 'local' || vaultMode === 'cloud' ? (
-                    <button
-                      onClick={() => { onVaultModeChange('remote'); onClose() }}
-                      className="w-full px-3 py-2 text-xs font-medium rounded bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors border border-gray-700"
-                    >
-                      Switch to demo vault
-                    </button>
-                  ) : !session?.user && sessionStatus !== 'loading' ? (
+                  {!session?.user && sessionStatus !== 'loading' ? (
                     <div className="bg-gray-800 border border-gray-700 rounded-lg p-3 space-y-2">
                       <p className="text-xs text-gray-400">
                         A free account is required to use local or cloud vault mode.
@@ -270,25 +295,100 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                     <div className="space-y-2">
                       <button
                         onClick={() => { onVaultModeChange('cloud'); onClose() }}
-                        className="w-full px-3 py-2 text-xs font-medium rounded bg-blue-900 text-blue-200 hover:bg-blue-800 transition-colors"
+                        className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors ${
+                          vaultMode === 'cloud'
+                            ? 'bg-blue-700 text-blue-100'
+                            : 'bg-blue-900 text-blue-200 hover:bg-blue-800'
+                        }`}
                       >
                         Use cloud vault
                       </button>
                       {isFSAccessSupported() ? (
-                        <button
-                          onClick={handlePickLocalVault}
-                          disabled={pickingFolder}
-                          className="w-full px-3 py-2 text-xs font-medium rounded bg-emerald-900 text-emerald-200 hover:bg-emerald-800 disabled:opacity-40 transition-colors"
-                        >
-                          {pickingFolder ? 'Selecting folder…' : 'Switch to local vault'}
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => {
+                              if (browserAdapter) {
+                                onVaultModeChange('local', browserAdapter)
+                                onClose()
+                              } else {
+                                handlePickLocalVault()
+                              }
+                            }}
+                            disabled={pickingFolder}
+                            className={`w-full px-3 py-2 text-xs font-medium rounded disabled:opacity-40 transition-colors ${
+                              vaultMode === 'local'
+                                ? 'bg-emerald-700 text-emerald-100'
+                                : 'bg-emerald-900 text-emerald-200 hover:bg-emerald-800'
+                            }`}
+                          >
+                            {pickingFolder
+                              ? 'Selecting folder…'
+                              : browserAdapter
+                              ? 'Use connected local vault'
+                              : 'Connect local vault folder'}
+                          </button>
+                          <button
+                            onClick={handlePickLocalVault}
+                            disabled={pickingFolder}
+                            className="w-full px-3 py-2 text-xs font-medium rounded bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-40 transition-colors border border-gray-700"
+                          >
+                            {browserAdapter ? 'Choose a different local folder' : 'Pick local folder'}
+                          </button>
+                        </div>
                       ) : (
                         <p className="text-xs text-amber-500">
                           Local vault is not supported in this browser. Use Chrome or Edge.
                         </p>
                       )}
+                      <button
+                        onClick={() => { onVaultModeChange('remote'); onClose() }}
+                        className={`w-full px-3 py-2 text-xs font-medium rounded transition-colors border ${
+                          vaultMode === 'remote'
+                            ? 'bg-gray-700 text-gray-100 border-gray-600'
+                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border-gray-700'
+                        }`}
+                      >
+                        Use demo vault
+                      </button>
                     </div>
                   )}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                  RAG Index
+                </h3>
+                <p className="text-xs text-gray-600 mb-4">
+                  {vaultMode === 'local'
+                    ? 'Local vault mode stores embeddings in this browser\'s IndexedDB on this device and browser profile. They are not written into your selected vault folder. Chat retrieves from the local wiki-note index stored here.'
+                    : vaultMode === 'cloud'
+                    ? 'Cloud vault mode stores embeddings in your Supabase/Postgres account database. Chat retrieves from your indexed wiki notes stored there.'
+                    : 'Demo mode stores embeddings on the server. Tokenise notes here before using RAG chat.'}
+                </p>
+
+                <div className="space-y-4">
+                  <div className="border border-gray-800 rounded-lg p-4">
+                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                      Raw notes index
+                    </label>
+                    <p className="text-xs text-gray-600 mb-2">
+                      Index your raw notes. Wiki notes are used first for chat, but raw indexing can help with later workflows.
+                    </p>
+                    <TokeniseRow folder="raw" />
+                  </div>
+
+                  <div className="border border-gray-800 rounded-lg p-4">
+                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                      Wiki notes index
+                    </label>
+                    <p className="text-xs text-gray-600 mb-2">
+                      Index your compiled wiki notes. Chat answers are grounded in the wiki notes currently present in this vault.
+                    </p>
+                    <TokeniseRow folder="wiki" />
+                  </div>
                 </div>
               </section>
 
@@ -316,7 +416,6 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                         placeholder="/Users/you/notes/raw"
                         className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
                       />
-                      <TokeniseRow folder="raw" />
                     </div>
 
                     <div className="border border-gray-800 rounded-lg p-4">
@@ -331,7 +430,6 @@ export default function SettingsModal({ onClose, onSaved, onError, vaultMode, on
                         placeholder="/Users/you/notes/wiki"
                         className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
                       />
-                      <TokeniseRow folder="wiki" />
                     </div>
                   </div>
                 </section>

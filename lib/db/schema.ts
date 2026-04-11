@@ -51,3 +51,18 @@ export const vaultNotes = pgTable('vault_notes', {
 }, (t) => [
   uniqueIndex('vault_notes_user_folder_slug_idx').on(t.userId, t.folder, t.slug),
 ])
+
+export const vaultEmbeddings = pgTable('vault_embeddings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  folder: text('folder').notNull(), // 'raw' | 'wiki'
+  slug: text('slug').notNull(),
+  contentHash: text('content_hash').notNull(),
+  embedding: jsonb('embedding').$type<number[]>().notNull(),
+  provider: text('provider').notNull(),
+  model: text('model').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('vault_embeddings_user_folder_slug_idx').on(t.userId, t.folder, t.slug),
+])

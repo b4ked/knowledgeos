@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { NoteMetadata } from '@/lib/vault/VaultAdapter'
+import type { NoteFolder, NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
 import FolderTree from '@/components/FolderTree'
 import NewFolderDialog from '@/components/NewFolderDialog'
@@ -23,6 +23,15 @@ import {
   restoreSavedVaultFolder,
   saveVaultFolderHandle,
 } from '@/lib/vault/BrowserVaultAdapter'
+import {
+  clearLocalRagEntries,
+  hashContentInBrowser,
+  listLocalRagEntries,
+  retrieveLocalRagSlugs,
+  upsertLocalRagEntry,
+  writeLocalRagEntries,
+  writeLocalRagMeta,
+} from '@/lib/rag/browserStore'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import UserMenu from '@/components/UserMenu'
 import FrontmatterPanel from '@/components/FrontmatterPanel'
@@ -31,6 +40,7 @@ import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
 type Tag = { name: string; count: number }
+type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
 
 export default function Home() {
   const [folder, setFolder] = useState<Folder>('wiki')
@@ -79,12 +89,32 @@ export default function Home() {
   const { toasts, addToast, removeToast } = useToast()
 
   async function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
-    browserAdapterRef.current = adapter ?? null
+    let nextAdapter = browserAdapterRef.current
+
+    if (mode === 'local') {
+      if (adapter) {
+        nextAdapter = adapter
+      } else if (!nextAdapter) {
+        const restored = await restoreSavedVaultFolder({ requestPermission: true }).catch(() => null)
+        if (restored) nextAdapter = new BrowserVaultAdapter(restored)
+      }
+      browserAdapterRef.current = nextAdapter ?? browserAdapterRef.current
+    } else if (adapter) {
+      browserAdapterRef.current = adapter
+    }
+
     setVaultMode(mode)
-    setLocalHandleMissing(mode === 'local' && !adapter)
-    if (mode === 'local' && adapter) {
+    setLocalHandleMissing(mode === 'local' && !nextAdapter)
+
+    try {
+      window.localStorage.setItem('knowledgeos.activeVaultMode', mode)
+    } catch {
+      // Ignore storage failures
+    }
+
+    if (mode === 'local' && nextAdapter) {
       try {
-        await saveVaultFolderHandle(adapter.getHandle())
+        await saveVaultFolderHandle(nextAdapter.getHandle())
       } catch {
         // Non-fatal — local mode still works for this session
       }
@@ -107,15 +137,12 @@ export default function Home() {
       let nextMode: VaultMode = 'remote'
 
       try {
-        const response = await fetch('/api/preferences')
-        if (response.ok) {
-          const prefs = await response.json() as { vaultMode?: string }
-          if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
-            nextMode = prefs.vaultMode
-          }
+        const active = window.localStorage.getItem('knowledgeos.activeVaultMode')
+        if (active === 'cloud' || active === 'local' || active === 'remote') {
+          nextMode = active
         }
       } catch {
-        // Keep remote default for anonymous/demo usage
+        // Ignore storage failures
       }
 
       try {
@@ -123,6 +150,7 @@ export default function Home() {
         if (pending === 'cloud' || pending === 'local') {
           nextMode = pending
           window.localStorage.removeItem('knowledgeos.pendingVaultMode')
+          window.localStorage.setItem('knowledgeos.activeVaultMode', pending)
           fetch('/api/preferences', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -131,6 +159,20 @@ export default function Home() {
         }
       } catch {
         // Ignore storage failures
+      }
+
+      if (nextMode === 'remote') {
+        try {
+          const response = await fetch('/api/preferences')
+          if (response.ok) {
+            const prefs = await response.json() as { vaultMode?: string }
+            if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
+              nextMode = prefs.vaultMode
+            }
+          }
+        } catch {
+          // Keep remote default for anonymous/demo usage
+        }
       }
 
       if (nextMode === 'local') {
@@ -148,6 +190,11 @@ export default function Home() {
       if (!cancelled) {
         setVaultMode(nextMode)
         setVaultModeLoaded(true)
+        try {
+          window.localStorage.setItem('knowledgeos.activeVaultMode', nextMode)
+        } catch {
+          // Ignore storage failures
+        }
       }
     }
 
@@ -155,6 +202,134 @@ export default function Home() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  const syncLocalRagNote = useCallback(async (folder: NoteFolder, slug: string, content: string) => {
+    if (vaultMode !== 'local' || !content.trim()) return
+
+    const res = await fetch('/api/embeddings/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, notes: [{ slug, content }] }),
+    })
+    const data = await res.json() as {
+      entries?: Array<{ slug: string; contentHash: string; embedding: number[]; updatedAt: string }>
+      meta?: { provider: string; model: string; updatedAt: string }
+      error?: string
+    }
+    if (!res.ok || !data.entries?.[0] || !data.meta) {
+      throw new Error(data.error ?? 'Could not update local RAG index')
+    }
+
+    const entry = data.entries[0]
+    await upsertLocalRagEntry(folder, {
+      slug: entry.slug,
+      contentHash: entry.contentHash,
+      embedding: entry.embedding,
+      updatedAt: entry.updatedAt,
+    })
+    await writeLocalRagMeta(folder, data.meta)
+  }, [vaultMode])
+
+  const handleLocalTokenise = useCallback(async (folder: Folder): Promise<TokeniseResult> => {
+    const adapter = browserAdapterRef.current
+    if (!adapter) {
+      throw new Error('Reconnect your local vault folder first')
+    }
+
+    const notes = await adapter.listNotes(folder)
+    const existing = new Map((await listLocalRagEntries(folder)).map((entry) => [entry.slug, entry]))
+    const changedNotes: Array<{ slug: string; content: string }> = []
+    let skipped = 0
+
+    for (const note of notes) {
+      const content = await adapter.readNote(note.path).catch(() => '')
+      if (!content.trim()) {
+        skipped++
+        continue
+      }
+      const contentHash = await hashContentInBrowser(content)
+      if (existing.get(note.slug)?.contentHash === contentHash) {
+        skipped++
+        continue
+      }
+      changedNotes.push({ slug: note.slug, content })
+    }
+
+    if (changedNotes.length === 0) {
+      return { indexed: 0, skipped, total: notes.length, errors: [] }
+    }
+
+    const res = await fetch('/api/embeddings/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, notes: changedNotes }),
+    })
+    const data = await res.json() as {
+      indexed?: number
+      skipped?: number
+      total?: number
+      errors?: string[]
+      entries?: Array<{ slug: string; contentHash: string; embedding: number[]; updatedAt: string }>
+      meta?: { provider: string; model: string; updatedAt: string }
+      error?: string
+    }
+    if (!res.ok || !data.entries || !data.meta) {
+      throw new Error(data.error ?? 'Tokenisation failed')
+    }
+
+    await writeLocalRagEntries(
+      folder,
+      data.entries.map((entry) => ({
+        slug: entry.slug,
+        contentHash: entry.contentHash,
+        embedding: entry.embedding,
+        updatedAt: entry.updatedAt,
+      }))
+    )
+    await writeLocalRagMeta(folder, data.meta)
+
+    return {
+      indexed: data.indexed ?? data.entries.length,
+      skipped,
+      total: notes.length,
+      errors: data.errors ?? [],
+    }
+  }, [])
+
+  const handleClearLocalRag = useCallback(async () => {
+    await clearLocalRagEntries()
+  }, [])
+
+  const getLocalQueryNotes = useCallback(async (question: string) => {
+    const adapter = browserAdapterRef.current
+    if (!adapter) {
+      throw new Error('Reconnect your local vault folder first')
+    }
+
+    const embeddingRes = await fetch('/api/embeddings/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    })
+    const embeddingData = await embeddingRes.json() as { embedding?: number[]; error?: string }
+    if (!embeddingRes.ok || !embeddingData.embedding) {
+      throw new Error(embeddingData.error ?? 'Could not search the local RAG index')
+    }
+
+    const slugs = await retrieveLocalRagSlugs('wiki', embeddingData.embedding)
+    if (slugs.length === 0) {
+      throw new Error('Local RAG index is empty. Open Settings and tokenise your wiki notes first.')
+    }
+
+    const notes = await Promise.all(
+      slugs.map(async (slug) => ({
+        slug,
+        content: await adapter.readNote(`wiki/${slug}.md`).catch(() => ''),
+      }))
+    )
+
+    return notes.filter((note) => note.content.trim().length > 0)
   }, [])
 
   // Load custom presets list for sidebar compile selector
@@ -389,14 +564,20 @@ export default function Home() {
     setDeleteConfirm(null)
   }
 
-  function handleNoteSaved(note: NoteMetadata) {
+  async function handleNoteSaved(note: NoteMetadata) {
     const noteFolder = note.folder as Folder
     if (noteFolder !== folder) setFolder(noteFolder)
-    loadNotes(noteFolder)
+    await loadNotes(noteFolder)
     setPanel('viewer')
     setNewNoteFolder(undefined)
-    handleSelectNote(note)
-    if (showGraph) loadGraph()
+    await handleSelectNote(note)
+    if (vaultMode === 'local' && note.folder === 'wiki' && browserAdapterRef.current) {
+      const content = await browserAdapterRef.current.readNote(note.path).catch(() => '')
+      if (content.trim()) {
+        await syncLocalRagNote('wiki', note.slug, content).catch(() => {})
+      }
+    }
+    if (showGraph) await loadGraph()
     addToast(`Saved & compiled → ${note.slug}`, 'success')
   }
 
@@ -441,6 +622,7 @@ export default function Home() {
         }
 
         await adapter.writeNote(data.outputPath, data.output)
+        await syncLocalRagNote('wiki', data.slug, data.output).catch(() => {})
         setCheckedSlugs(new Set())
         setFolder('wiki')
         await loadNotes('wiki')
@@ -937,7 +1119,12 @@ export default function Home() {
                   slug={selectedNote.slug}
                   folder={folder}
                   onWikilinkClick={handleWikilinkClick}
-                  onContentSaved={(newContent) => setNoteContent(newContent)}
+                  onContentSaved={(newContent) => {
+                    setNoteContent(newContent)
+                    if (vaultMode === 'local' && folder === 'wiki') {
+                      syncLocalRagNote('wiki', selectedNote.slug, newContent).catch(() => {})
+                    }
+                  }}
                   browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
                 />
               ) : null}
@@ -946,7 +1133,12 @@ export default function Home() {
                   content={noteContent}
                   slug={selectedNote.slug}
                   folder={folder}
-                  onContentSaved={(newContent) => setNoteContent(newContent)}
+                  onContentSaved={(newContent) => {
+                    setNoteContent(newContent)
+                    if (vaultMode === 'local') {
+                      syncLocalRagNote('wiki', selectedNote.slug, newContent).catch(() => {})
+                    }
+                  }}
                   browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
                 />
               )}
@@ -1029,20 +1221,7 @@ export default function Home() {
                   onSourceClick={handleChatSourceClick}
                   onSourcesUpdate={(slugs) => setHighlightedSlugs(new Set(slugs))}
                   vaultMode={vaultMode}
-                  getLocalNotes={
-                    vaultMode === 'local' && browserAdapterRef.current
-                      ? async () => {
-                          const adapter = browserAdapterRef.current!
-                          const wikiMeta = await adapter.listNotes('wiki')
-                          return Promise.all(
-                            wikiMeta.map(async (note) => ({
-                              slug: note.slug,
-                              content: await adapter.readNote(note.path).catch(() => ''),
-                            }))
-                          )
-                        }
-                      : undefined
-                  }
+                  getLocalNotesForQuery={vaultMode === 'local' ? getLocalQueryNotes : undefined}
                 />
               </div>
             </aside>
@@ -1066,7 +1245,10 @@ export default function Home() {
           onSaved={(msg) => addToast(msg, 'success')}
           onError={(msg) => addToast(msg, 'error')}
           vaultMode={vaultMode}
+          browserAdapter={browserAdapterRef.current}
           onVaultModeChange={handleVaultModeChange}
+          onLocalTokenise={handleLocalTokenise}
+          onLocalClearRag={handleClearLocalRag}
         />
       )}
 

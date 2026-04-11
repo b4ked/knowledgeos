@@ -69,10 +69,10 @@ interface ChatPanelProps {
   onSourceClick: (slug: string) => void
   onSourcesUpdate?: (slugs: string[]) => void
   vaultMode?: VaultMode
-  getLocalNotes?: () => Promise<Array<{ slug: string; content: string }>>
+  getLocalNotesForQuery?: (question: string) => Promise<Array<{ slug: string; content: string }>>
 }
 
-export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 'remote', getLocalNotes }: ChatPanelProps) {
+export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 'remote', getLocalNotesForQuery }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -105,8 +105,8 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 
     setLoading(true)
 
     try {
-      const body = vaultMode === 'local' && getLocalNotes
-        ? { question, notes: await getLocalNotes() }
+      const body = vaultMode === 'local' && getLocalNotesForQuery
+        ? { question, notes: await getLocalNotesForQuery(question) }
         : { question }
 
       const res = await fetch('/api/query', {
@@ -128,8 +128,8 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 
         { role: 'assistant', content: data.answer ?? '', sources },
       ])
       onSourcesUpdate?.(sources)
-    } catch {
-      setError('Network error — could not reach query API')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error — could not reach query API')
     } finally {
       setLoading(false)
     }
@@ -139,7 +139,16 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, vaultMode = 
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Chat</span>
+        <div>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Chat</span>
+          <p className="text-[11px] text-gray-600 mt-0.5">
+            {vaultMode === 'local'
+              ? 'Using the local RAG index in this browser'
+              : vaultMode === 'cloud'
+              ? 'Using the cloud RAG index in your account'
+              : 'Using the demo vault RAG index'}
+          </p>
+        </div>
         {messages.length > 0 && (
           <button
             onClick={() => { setMessages([]); setError(null); onSourcesUpdate?.([]) }}

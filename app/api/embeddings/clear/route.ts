@@ -1,5 +1,7 @@
 import path from 'path'
+import { auth } from '@/auth'
 import { writeStore } from '@/lib/embeddings/store'
+import { deleteUserEmbeddings } from '@/lib/rag/cloudStore'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 function getVaultPath() {
@@ -7,6 +9,12 @@ function getVaultPath() {
 }
 
 export async function DELETE() {
+  const session = await auth()
+  if (session?.user?.id) {
+    await deleteUserEmbeddings(session.user.id)
+    return Response.json({ ok: true, cleared: true })
+  }
+
   if (getVpsConfig()) return proxyToVps('/api/embeddings/clear', 'DELETE')
   const vaultPath = getVaultPath()
   await writeStore(vaultPath, {})

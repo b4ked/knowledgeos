@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { retrieveContext } from '@/lib/embeddings/retrieve'
 import { readMeta } from '@/lib/embeddings/store'
+import { listUserEmbeddings } from '@/lib/rag/cloudStore'
 import { getAdapter } from '@/lib/vault/getAdapter'
 import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
 import { cosineSimilarity } from '@/lib/embeddings/cosine'
@@ -42,6 +43,42 @@ async function queryFromNotes(question: string, notes: QueryNoteInput[]) {
   return { answer, sources }
 }
 
+async function queryFromCloud(question: string, userId: string) {
+  const llm = getLLMProvider()
+  const embeddings = await listUserEmbeddings(userId, 'wiki')
+
+  if (embeddings.length === 0) {
+    return {
+      error: 'Cloud RAG index is empty. Open Settings and tokenise your wiki notes first.',
+      status: 409,
+    }
+  }
+
+  const questionEmbedding = await llm.embed(question)
+  const adapter = await getAdapter(userId)
+  const retrieved = embeddings
+    .map((entry) => ({
+      slug: entry.slug,
+      score: cosineSimilarity(questionEmbedding, entry.embedding),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .filter((entry) => entry.score >= 0.1)
+
+  const sources: string[] = []
+  const context: string[] = []
+
+  for (const entry of retrieved) {
+    const content = await adapter.readNote(`wiki/${entry.slug}.md`).catch(() => '')
+    if (!content.trim()) continue
+    sources.push(entry.slug)
+    context.push(content)
+  }
+
+  const answer = await llm.query(question, context)
+  return { answer, sources, status: 200 }
+}
+
 export async function POST(request: Request) {
   const body = await request.json() as { question?: string; notes?: QueryNoteInput[] }
   const { question, notes } = body
@@ -56,21 +93,16 @@ export async function POST(request: Request) {
       return Response.json(result)
     }
 
-    if (getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
-
     const session = await auth()
     if (session?.user?.id) {
-      const adapter = await getAdapter(session.user.id)
-      const wikiMeta = await adapter.listNotes('wiki')
-      const wikiNotes = await Promise.all(
-        wikiMeta.map(async (note) => ({
-          slug: note.slug,
-          content: await adapter.readNote(note.path).catch(() => ''),
-        }))
-      )
-      const result = await queryFromNotes(question.trim(), wikiNotes)
-      return Response.json(result)
+      const result = await queryFromCloud(question.trim(), session.user.id)
+      if (result.status !== 200) {
+        return Response.json({ error: result.error }, { status: result.status })
+      }
+      return Response.json({ answer: result.answer, sources: result.sources })
     }
+
+    if (getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
 
     const vaultPath = getVaultPath()
     const llm = getLLMProvider()

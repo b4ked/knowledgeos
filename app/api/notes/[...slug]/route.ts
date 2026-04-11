@@ -1,4 +1,7 @@
 import { auth } from '@/auth'
+import { getLLMProvider } from '@/lib/llm/getLLMProvider'
+import { deleteUserEmbeddings, upsertUserEmbedding } from '@/lib/rag/cloudStore'
+import { hashContent } from '@/lib/rag/hash'
 import { getAdapter } from '@/lib/vault/getAdapter'
 
 export async function GET(
@@ -44,6 +47,25 @@ export async function PUT(
   const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.writeNote(notePath, body.content)
 
+  if (session?.user?.id && folder === 'wiki' && body.content.trim()) {
+    const llm = getLLMProvider()
+    const provider = process.env.LLM_PROVIDER ?? 'anthropic'
+    const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
+    try {
+      await upsertUserEmbedding({
+        userId: session.user.id,
+        folder: 'wiki',
+        slug,
+        contentHash: hashContent(body.content),
+        embedding: await llm.embed(body.content),
+        provider,
+        model,
+      })
+    } catch (embedErr) {
+      console.error('notes PUT: embedding upsert failed (non-fatal):', embedErr)
+    }
+  }
+
   const notes = await adapter.listNotes(folder)
   const updated = notes.find((n) => n.slug === slug)
   if (!updated) {
@@ -70,6 +92,9 @@ export async function DELETE(
 
   try {
     await adapter.deleteNote(notePath)
+    if (session?.user?.id && folder === 'wiki') {
+      await deleteUserEmbeddings(session.user.id, { folder: 'wiki', slug })
+    }
     return new Response(null, { status: 204 })
   } catch {
     return Response.json({ error: `Note not found: ${slug}` }, { status: 404 })

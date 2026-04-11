@@ -1,4 +1,7 @@
 import { auth } from '@/auth'
+import { getLLMProvider } from '@/lib/llm/getLLMProvider'
+import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
+import { hashContent } from '@/lib/rag/hash'
 import { getAdapter } from '@/lib/vault/getAdapter'
 
 export async function GET(request: Request) {
@@ -36,6 +39,21 @@ export async function POST(request: Request) {
   const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.ensureDirectories()
   await adapter.writeNote(notePath, content)
+
+  if (session?.user?.id && folder === 'wiki' && content.trim()) {
+    const llm = getLLMProvider()
+    const provider = process.env.LLM_PROVIDER ?? 'anthropic'
+    const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
+    await upsertUserEmbedding({
+      userId: session.user.id,
+      folder: 'wiki',
+      slug: safeFilename.replace(/\.md$/, ''),
+      contentHash: hashContent(content),
+      embedding: await llm.embed(content),
+      provider,
+      model,
+    })
+  }
 
   const notes = await adapter.listNotes(folder as 'raw' | 'wiki')
   const created = notes.find((n) => n.filename === safeFilename)

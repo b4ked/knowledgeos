@@ -29,8 +29,7 @@ export default function VaultModeBanner({ mode, onSwitch }: VaultModeBannerProps
       ? 'Cloud vault'
       : 'Demo vault (remote)'
 
-  const switchLabel =
-    mode === 'local' || mode === 'cloud' ? 'Switch to demo' : 'Use local vault'
+  const switchLabel = mode === 'remote' ? 'Choose vault' : 'Switch vault'
 
   return (
     <div

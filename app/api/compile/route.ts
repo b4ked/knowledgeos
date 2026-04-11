@@ -8,6 +8,8 @@ import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 import { extractWikilinks } from '@/lib/compiler/compile'
+import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
+import { hashContent } from '@/lib/rag/hash'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -43,8 +45,6 @@ export async function POST(request: Request) {
     }
   }
 
-  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
-
   // Cloud mode: use the database-backed adapter for authenticated users
   if (userId) {
     try {
@@ -65,6 +65,21 @@ export async function POST(request: Request) {
 
       // Write compiled note back to cloud adapter
       await adapter.writeNote(outputPath, output)
+      const provider = process.env.LLM_PROVIDER ?? 'anthropic'
+      const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
+      try {
+        await upsertUserEmbedding({
+          userId,
+          folder: 'wiki',
+          slug,
+          contentHash: hashContent(output),
+          embedding: await llm.embed(output),
+          provider,
+          model,
+        })
+      } catch (embedErr) {
+        console.error('compile: embedding upsert failed (non-fatal):', embedErr)
+      }
 
       return Response.json({ outputPath, slug, wikilinks, output }, { status: 200 })
     } catch (err: unknown) {
@@ -72,6 +87,8 @@ export async function POST(request: Request) {
       return Response.json({ error: message }, { status: 500 })
     }
   }
+
+  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
 
   // Local/remote mode: use filesystem-based compile
   const vaultPath = process.env.VAULT_PATH
