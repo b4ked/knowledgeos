@@ -44,15 +44,19 @@ export async function POST(request: Request) {
     const llm = getLLMProvider()
     const provider = process.env.LLM_PROVIDER ?? 'anthropic'
     const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
-    await upsertUserEmbedding({
-      userId: session.user.id,
-      folder: 'wiki',
-      slug: safeFilename.replace(/\.md$/, ''),
-      contentHash: hashContent(content),
-      embedding: await llm.embed(content),
-      provider,
-      model,
-    })
+    try {
+      await upsertUserEmbedding({
+        userId: session.user.id,
+        folder: 'wiki',
+        slug: safeFilename.replace(/\.md$/, ''),
+        contentHash: hashContent(content),
+        embedding: await llm.embed(content),
+        provider,
+        model,
+      })
+    } catch (embedErr) {
+      console.error('notes POST: embedding upsert failed (non-fatal):', embedErr)
+    }
   }
 
   const notes = await adapter.listNotes(folder as 'raw' | 'wiki')
