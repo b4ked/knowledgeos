@@ -5,9 +5,11 @@ import type { NoteInput } from '@/lib/graph/parseLinks'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 export async function GET() {
-  if (getVpsConfig()) return proxyToVps('/api/graph', 'GET')
-
   const session = await auth()
+
+  // Authenticated users always use the cloud adapter — never proxy to VPS
+  if (!session?.user?.id && getVpsConfig()) return proxyToVps('/api/graph', 'GET')
+
   const adapter = await getAdapter(session?.user?.id ?? undefined)
   await adapter.ensureDirectories()
 
