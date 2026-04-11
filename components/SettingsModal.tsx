@@ -186,7 +186,7 @@ export default function SettingsModal({
             disabled={state.status === 'running' || clearing}
             className="px-3 py-1.5 text-xs font-medium bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed rounded transition-colors border border-gray-700"
           >
-            {state.status === 'running' ? 'Tokenising…' : 'Tokenise for RAG'}
+            {state.status === 'running' ? 'Analysing…' : 'Analyse Wiki'}
           </button>
           <button
             onClick={() => setClearConfirm(true)}

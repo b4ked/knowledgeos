@@ -266,10 +266,6 @@ export default function Home() {
       changedNotes.push({ slug: note.slug, content })
     }
 
-    if (changedNotes.length === 0) {
-      return { indexed: 0, skipped, total: notes.length, errors: [] }
-    }
-
     type EmbedEntry = { slug: string; contentHash: string; embedding: number[]; updatedAt: string }
     type EmbedMeta = { provider: string; model: string; updatedAt: string }
     const allEntries: EmbedEntry[] = []
@@ -277,41 +273,71 @@ export default function Home() {
     let totalIndexed = 0
     let lastMeta: EmbedMeta | undefined
 
-    // Process in batches of 5 to avoid Vercel serverless timeouts and large payloads
-    const BATCH_SIZE = 5
-    for (let i = 0; i < changedNotes.length; i += BATCH_SIZE) {
-      const batch = changedNotes.slice(i, i + BATCH_SIZE)
-      const res = await fetch('/api/embeddings/index', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder, notes: batch }),
-      })
-      const data = await res.json() as {
-        indexed?: number
-        errors?: string[]
-        entries?: EmbedEntry[]
-        meta?: EmbedMeta
-        error?: string
+    if (changedNotes.length > 0) {
+      // Process in batches of 5 to avoid Vercel serverless timeouts and large payloads
+      const BATCH_SIZE = 5
+      for (let i = 0; i < changedNotes.length; i += BATCH_SIZE) {
+        const batch = changedNotes.slice(i, i + BATCH_SIZE)
+        const res = await fetch('/api/embeddings/index', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder, notes: batch }),
+        })
+        const data = await res.json() as {
+          indexed?: number
+          errors?: string[]
+          entries?: EmbedEntry[]
+          meta?: EmbedMeta
+          error?: string
+        }
+        if (!res.ok || !data.entries || !data.meta) {
+          throw new Error(data.error ?? 'Analysis failed — check your API key and try again')
+        }
+        allEntries.push(...data.entries)
+        allErrors.push(...(data.errors ?? []))
+        totalIndexed += data.indexed ?? data.entries.length
+        lastMeta = data.meta
       }
-      if (!res.ok || !data.entries || !data.meta) {
-        throw new Error(data.error ?? 'Tokenisation failed')
-      }
-      allEntries.push(...data.entries)
-      allErrors.push(...(data.errors ?? []))
-      totalIndexed += data.indexed ?? data.entries.length
-      lastMeta = data.meta
+
+      await writeLocalRagEntries(
+        adapter,
+        allEntries.map((entry) => ({
+          slug: entry.slug,
+          contentHash: entry.contentHash,
+          embedding: entry.embedding,
+          updatedAt: entry.updatedAt,
+        }))
+      )
+      if (lastMeta) await writeLocalRagMeta(adapter, lastMeta)
     }
 
-    await writeLocalRagEntries(
-      adapter,
-      allEntries.map((entry) => ({
-        slug: entry.slug,
-        contentHash: entry.contentHash,
-        embedding: entry.embedding,
-        updatedAt: entry.updatedAt,
-      }))
-    )
-    if (lastMeta) await writeLocalRagMeta(adapter, lastMeta)
+    // Rebuild and persist graph analysis (non-fatal)
+    ;(async () => {
+      try {
+        const { parseLinks } = await import('@/lib/graph/parseLinks')
+        const { persistLocalGraphInsights } = await import('@/lib/graph/localGraphStore')
+        const [wikiMeta, rawMeta] = await Promise.all([
+          adapter.listNotes('wiki'),
+          adapter.listNotes('raw'),
+        ])
+        const [wikiNotes, rawNotes] = await Promise.all([
+          Promise.all(wikiMeta.map(async (m) => ({
+            slug: m.slug,
+            content: await adapter.readNote(m.path).catch(() => ''),
+            type: 'wiki' as const,
+          }))),
+          Promise.all(rawMeta.map(async (m) => ({
+            slug: m.slug,
+            content: await adapter.readNote(m.path).catch(() => ''),
+            type: 'raw' as const,
+          }))),
+        ])
+        const built = parseLinks([...wikiNotes, ...rawNotes])
+        graphDataRef.current = built
+        setGraphData(built)
+        await persistLocalGraphInsights(adapter, built)
+      } catch { /* non-fatal */ }
+    })()
 
     return {
       indexed: totalIndexed,
@@ -319,6 +345,7 @@ export default function Home() {
       total: notes.length,
       errors: allErrors,
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleClearLocalRag = useCallback(async () => {
@@ -1271,6 +1298,17 @@ export default function Home() {
                   onNodeFocus={(slug) => setHighlightedSlugs(new Set([slug]))}
                   onNoteOpen={handleChatSourceClick}
                   onDismiss={() => setQueryInsights(null)}
+                  onGetNoteContent={async (slug) => {
+                    if (vaultMode === 'local' && browserAdapterRef.current) {
+                      return browserAdapterRef.current.readNote(`wiki/${slug}.md`).catch(() => '')
+                    }
+                    const res = await fetch(`/api/notes/${slug}?folder=wiki`)
+                    if (res.ok) {
+                      const data = await res.json() as { content: string }
+                      return data.content
+                    }
+                    return ''
+                  }}
                 />
               )}
             </aside>
