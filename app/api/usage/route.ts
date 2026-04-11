@@ -7,6 +7,11 @@ export async function GET() {
     return Response.json({ plan: 'guest', used: 0, limit: 0 })
   }
 
-  const usage = await getDailyUsage(session.user.id)
-  return Response.json(usage)
+  try {
+    const usage = await getDailyUsage(session.user.id)
+    return Response.json(usage)
+  } catch {
+    // Table may not exist yet — return empty so banner stays hidden
+    return Response.json({ plan: 'free', used: 0, limit: 0 })
+  }
 }

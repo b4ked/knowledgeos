@@ -93,12 +93,16 @@ export async function POST(request: Request) {
 
     if (Array.isArray(notes) && notes.length > 0) {
       if (session?.user?.id) {
-        const usage = await checkAndIncrementUsage(session.user.id, 'chat')
-        if (!usage.allowed) {
-          return Response.json(
-            { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
-            { status: 429 }
-          )
+        try {
+          const usage = await checkAndIncrementUsage(session.user.id, 'chat')
+          if (!usage.allowed) {
+            return Response.json(
+              { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+              { status: 429 }
+            )
+          }
+        } catch (usageErr) {
+          console.error('query: usage check failed (non-fatal):', usageErr)
         }
       }
       const result = await queryFromNotes(question.trim(), notes)
@@ -106,12 +110,16 @@ export async function POST(request: Request) {
     }
 
     if (session?.user?.id) {
-      const usage = await checkAndIncrementUsage(session.user.id, 'chat')
-      if (!usage.allowed) {
-        return Response.json(
-          { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
-          { status: 429 }
-        )
+      try {
+        const usage = await checkAndIncrementUsage(session.user.id, 'chat')
+        if (!usage.allowed) {
+          return Response.json(
+            { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+            { status: 429 }
+          )
+        }
+      } catch (usageErr) {
+        console.error('query: usage check failed (non-fatal):', usageErr)
       }
       const result = await queryFromCloud(question.trim(), session.user.id)
       if (result.status !== 200) {

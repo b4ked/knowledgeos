@@ -33,12 +33,16 @@ export async function POST(request: Request) {
 
   if (Array.isArray(providedSources) && providedSources.length > 0) {
     if (userId) {
-      const usage = await checkAndIncrementUsage(userId, 'compile')
-      if (!usage.allowed) {
-        return Response.json(
-          { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
-          { status: 429 }
-        )
+      try {
+        const usage = await checkAndIncrementUsage(userId, 'compile')
+        if (!usage.allowed) {
+          return Response.json(
+            { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+            { status: 429 }
+          )
+        }
+      } catch (usageErr) {
+        console.error('compile: usage check failed (non-fatal):', usageErr)
       }
     }
     try {
@@ -57,12 +61,16 @@ export async function POST(request: Request) {
 
   // Cloud mode: use the database-backed adapter for authenticated users
   if (userId) {
-    const usage = await checkAndIncrementUsage(userId, 'compile')
-    if (!usage.allowed) {
-      return Response.json(
-        { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
-        { status: 429 }
-      )
+    try {
+      const usage = await checkAndIncrementUsage(userId, 'compile')
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+          { status: 429 }
+        )
+      }
+    } catch (usageErr) {
+      console.error('compile: usage check failed (non-fatal):', usageErr)
     }
     try {
       const adapter = await getAdapter(userId)
