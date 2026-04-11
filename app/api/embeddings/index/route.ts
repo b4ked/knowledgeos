@@ -17,6 +17,8 @@ interface ExplicitNoteInput {
   content: string
 }
 
+export const maxDuration = 60
+
 export async function POST(request: Request) {
   const body = await request.json() as { folder?: string; notes?: ExplicitNoteInput[] }
   const { folder, notes: explicitNotes } = body
@@ -31,29 +33,32 @@ export async function POST(request: Request) {
   const updatedAt = new Date().toISOString()
 
   if (Array.isArray(explicitNotes)) {
-    let indexed = 0
     const errors: string[] = []
     const entries: Array<{ slug: string; contentHash: string; embedding: number[]; updatedAt: string }> = []
 
-    for (const note of explicitNotes) {
-      if (!note?.slug || typeof note.content !== 'string' || !note.content.trim()) continue
-      try {
-        const embedding = await llm.embed(note.content)
-        entries.push({
-          slug: note.slug,
-          contentHash: hashContent(note.content),
-          embedding,
-          updatedAt,
-        })
-        indexed++
-      } catch (err) {
-        errors.push(`${note.slug}: ${(err as Error).message}`)
-      }
-    }
+    const validNotes = explicitNotes.filter(
+      (n) => n?.slug && typeof n.content === 'string' && n.content.trim()
+    )
+
+    await Promise.all(
+      validNotes.map(async (note) => {
+        try {
+          const embedding = await llm.embed(note.content)
+          entries.push({
+            slug: note.slug,
+            contentHash: hashContent(note.content),
+            embedding,
+            updatedAt,
+          })
+        } catch (err) {
+          errors.push(`${note.slug}: ${(err as Error).message}`)
+        }
+      })
+    )
 
     return Response.json({
-      indexed,
-      skipped: explicitNotes.length - indexed - errors.length,
+      indexed: entries.length,
+      skipped: explicitNotes.length - entries.length - errors.length,
       total: explicitNotes.length,
       errors,
       entries,
