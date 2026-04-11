@@ -250,7 +250,12 @@ export default function Home() {
 
     const notes = await adapter.listNotes(folder)
     const existing = new Map((await listLocalRagEntries(adapter)).map((entry) => [entry.slug, entry]))
-    const changedNotes: Array<{ slug: string; content: string }> = []
+    // Store the full-content hash alongside content so we can persist it correctly.
+    // The server only sees truncated content (to keep payloads small), so its returned
+    // contentHash would differ from the client's hash of the full content — causing every
+    // note to appear changed on every subsequent run. By pre-computing the full-content
+    // hash here and using it when writing the index, the skip check always matches.
+    const changedNotes: Array<{ slug: string; content: string; fullHash: string }> = []
     let skipped = 0
 
     for (const note of notes) {
@@ -259,12 +264,12 @@ export default function Home() {
         skipped++
         continue
       }
-      const contentHash = await hashContentInBrowser(content)
-      if (existing.get(note.slug)?.contentHash === contentHash) {
+      const fullHash = await hashContentInBrowser(content)
+      if (existing.get(note.slug)?.contentHash === fullHash) {
         skipped++
         continue
       }
-      changedNotes.push({ slug: note.slug, content })
+      changedNotes.push({ slug: note.slug, content, fullHash })
     }
 
     type EmbedEntry = { slug: string; contentHash: string; embedding: number[]; updatedAt: string }
@@ -280,7 +285,10 @@ export default function Home() {
       const BATCH_SIZE = 2
       const MAX_CONTENT = 6000
       for (let i = 0; i < changedNotes.length; i += BATCH_SIZE) {
-        const batch = changedNotes.slice(i, i + BATCH_SIZE).map((n) => ({
+        const batchSlice = changedNotes.slice(i, i + BATCH_SIZE)
+        // Build a slug → fullHash lookup so we can restore it after the server call
+        const fullHashBySlug = new Map(batchSlice.map((n) => [n.slug, n.fullHash]))
+        const batch = batchSlice.map((n) => ({
           slug: n.slug,
           content: n.content.length > MAX_CONTENT ? n.content.slice(0, MAX_CONTENT) : n.content,
         }))
@@ -299,7 +307,12 @@ export default function Home() {
         if (!res.ok || !data.entries || !data.meta) {
           throw new Error(data.error ?? `Analysis failed (HTTP ${res.status}) — check API key config`)
         }
-        allEntries.push(...data.entries)
+        // Override the server's contentHash (of truncated content) with the full-content
+        // hash computed locally — this is what the skip check reads on the next run.
+        allEntries.push(...data.entries.map((e) => ({
+          ...e,
+          contentHash: fullHashBySlug.get(e.slug) ?? e.contentHash,
+        })))
         allErrors.push(...(data.errors ?? []))
         totalIndexed += data.indexed ?? data.entries.length
         lastMeta = data.meta
