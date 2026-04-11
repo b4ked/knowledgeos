@@ -12,6 +12,7 @@ import ChatPanel from '@/components/ChatPanel'
 import ConventionsEditor from '@/components/ConventionsEditor'
 import SettingsModal from '@/components/SettingsModal'
 import VaultModeBanner from '@/components/VaultModeBanner'
+import UsageBanner from '@/components/UsageBanner'
 import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
 import ClipPanel from '@/components/ClipPanel'
@@ -55,6 +56,7 @@ export default function Home() {
   const [deleteConfirm, setDeleteConfirm] = useState<NoteMetadata | null>(null)
   const [checkedSlugs, setCheckedSlugs] = useState<Set<string>>(new Set())
   const [compiling, setCompiling] = useState(false)
+  const [usageVersion, setUsageVersion] = useState(0)
   const [compileError, setCompileError] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(true)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
@@ -595,6 +597,7 @@ export default function Home() {
       }
     }
     if (showGraph) await loadGraph()
+    setUsageVersion((v) => v + 1)
     addToast(`Saved & compiled → ${note.slug}`, 'success')
   }
 
@@ -644,6 +647,7 @@ export default function Home() {
         setFolder('wiki')
         await loadNotes('wiki')
         if (showGraph) loadGraph()
+        setUsageVersion((v) => v + 1)
         addToast(`Compiled → ${data.slug}`, 'success')
         setShowGraph(false)
         setSelectedNote({
@@ -951,6 +955,7 @@ export default function Home() {
         mode={vaultMode}
         onSwitch={() => setShowSettings(true)}
       />
+      <UsageBanner version={usageVersion} />
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
@@ -1237,6 +1242,7 @@ export default function Home() {
                 <ChatPanel
                   onSourceClick={handleChatSourceClick}
                   onSourcesUpdate={(slugs) => setHighlightedSlugs(new Set(slugs))}
+                  onQueryComplete={() => setUsageVersion((v) => v + 1)}
                   vaultMode={vaultMode}
                   getLocalNotesForQuery={vaultMode === 'local' ? getLocalQueryNotes : undefined}
                 />

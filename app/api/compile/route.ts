@@ -10,6 +10,7 @@ import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 import { extractWikilinks } from '@/lib/compiler/compile'
 import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
 import { hashContent } from '@/lib/rag/hash'
+import { checkAndIncrementUsage } from '@/lib/usage'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -31,6 +32,15 @@ export async function POST(request: Request) {
   const llm = getLLMProvider(conventions ?? {})
 
   if (Array.isArray(providedSources) && providedSources.length > 0) {
+    if (userId) {
+      const usage = await checkAndIncrementUsage(userId, 'compile')
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+          { status: 429 }
+        )
+      }
+    }
     try {
       const output = await llm.compile(providedSources, merged)
       const wikilinks = extractWikilinks(output)
@@ -47,6 +57,13 @@ export async function POST(request: Request) {
 
   // Cloud mode: use the database-backed adapter for authenticated users
   if (userId) {
+    const usage = await checkAndIncrementUsage(userId, 'compile')
+    if (!usage.allowed) {
+      return Response.json(
+        { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+        { status: 429 }
+      )
+    }
     try {
       const adapter = await getAdapter(userId)
 

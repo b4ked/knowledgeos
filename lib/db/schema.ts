@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, timestamp, jsonb, integer, uniqueIndex } from "drizzle-orm/pg-core"
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -50,6 +50,18 @@ export const vaultNotes = pgTable('vault_notes', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('vault_notes_user_folder_slug_idx').on(t.userId, t.folder, t.slug),
+])
+
+export const dailyUsage = pgTable('daily_usage', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD UTC
+  compileCount: integer('compile_count').default(0).notNull(),
+  chatCount: integer('chat_count').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex('daily_usage_user_date_idx').on(t.userId, t.date),
 ])
 
 export const vaultEmbeddings = pgTable('vault_embeddings', {

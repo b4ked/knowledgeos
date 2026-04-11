@@ -1,5 +1,6 @@
 import path from 'path'
 import { auth } from '@/auth'
+import { checkAndIncrementUsage } from '@/lib/usage'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { retrieveContext } from '@/lib/embeddings/retrieve'
 import { readMeta } from '@/lib/embeddings/store'
@@ -88,13 +89,30 @@ export async function POST(request: Request) {
   }
 
   try {
+    const session = await auth()
+
     if (Array.isArray(notes) && notes.length > 0) {
+      if (session?.user?.id) {
+        const usage = await checkAndIncrementUsage(session.user.id, 'chat')
+        if (!usage.allowed) {
+          return Response.json(
+            { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+            { status: 429 }
+          )
+        }
+      }
       const result = await queryFromNotes(question.trim(), notes)
       return Response.json(result)
     }
 
-    const session = await auth()
     if (session?.user?.id) {
+      const usage = await checkAndIncrementUsage(session.user.id, 'chat')
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.used}/${usage.limit}). Upgrade your plan for unlimited access.` },
+          { status: 429 }
+        )
+      }
       const result = await queryFromCloud(question.trim(), session.user.id)
       if (result.status !== 200) {
         return Response.json({ error: result.error }, { status: result.status })
