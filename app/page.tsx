@@ -88,6 +88,7 @@ export default function Home() {
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(320)
   const graphDataRef = useRef<GraphData>({ nodes: [], edges: [] })
+  const loadGraphVersion = useRef(0)
   const isResizingChat = useRef(false)
   const isResizingSidebar = useRef(false)
   const resizeStartX = useRef(0)
@@ -274,10 +275,15 @@ export default function Home() {
     let lastMeta: EmbedMeta | undefined
 
     if (changedNotes.length > 0) {
-      // Process in batches of 5 to avoid Vercel serverless timeouts and large payloads
-      const BATCH_SIZE = 5
+      // Batch of 2 to keep request + response payloads small (avoids SSL buffer issues on nginx).
+      // Content is trimmed to 6000 chars — sufficient context for voyage-3-lite embeddings.
+      const BATCH_SIZE = 2
+      const MAX_CONTENT = 6000
       for (let i = 0; i < changedNotes.length; i += BATCH_SIZE) {
-        const batch = changedNotes.slice(i, i + BATCH_SIZE)
+        const batch = changedNotes.slice(i, i + BATCH_SIZE).map((n) => ({
+          slug: n.slug,
+          content: n.content.length > MAX_CONTENT ? n.content.slice(0, MAX_CONTENT) : n.content,
+        }))
         const res = await fetch('/api/embeddings/index', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -291,7 +297,7 @@ export default function Home() {
           error?: string
         }
         if (!res.ok || !data.entries || !data.meta) {
-          throw new Error(data.error ?? 'Analysis failed — check your API key and try again')
+          throw new Error(data.error ?? `Analysis failed (HTTP ${res.status}) — check API key config`)
         }
         allEntries.push(...data.entries)
         allErrors.push(...(data.errors ?? []))
@@ -439,14 +445,16 @@ export default function Home() {
   }, [vaultMode])
 
   const loadGraph = useCallback(async () => {
+    // Increment version so any in-flight older call can detect it was superseded
+    const version = ++loadGraphVersion.current
     setGraphLoading(true)
+    // Immediately clear stale data from a previous vault mode
+    setGraphData({ nodes: [], edges: [] })
+    graphDataRef.current = { nodes: [], edges: [] }
     try {
       if (vaultMode === 'local') {
         const adapter = browserAdapterRef.current
-        if (!adapter) {
-          setGraphData({ nodes: [], edges: [] })
-          return
-        }
+        if (!adapter) return
         const [wikiMeta, rawMeta] = await Promise.all([
           adapter.listNotes('wiki'),
           adapter.listNotes('raw'),
@@ -464,6 +472,7 @@ export default function Home() {
             type: 'raw' as const,
           }))),
         ])
+        if (version !== loadGraphVersion.current) return
         const built = parseLinks([...wikiNotes, ...rawNotes])
         setGraphData(built)
         graphDataRef.current = built
@@ -475,12 +484,14 @@ export default function Home() {
         const res = await fetch('/api/graph')
         if (res.ok) {
           const gd = await res.json() as GraphData
+          // Discard result if a newer loadGraph call has started
+          if (version !== loadGraphVersion.current) return
           setGraphData(gd)
           graphDataRef.current = gd
         }
       }
     } finally {
-      setGraphLoading(false)
+      if (version === loadGraphVersion.current) setGraphLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultMode])

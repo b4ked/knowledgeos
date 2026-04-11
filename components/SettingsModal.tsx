@@ -140,7 +140,14 @@ export default function SettingsModal({
         }
       }
     } catch (err) {
-      setState({ status: 'error', error: err instanceof Error ? err.message : 'Network error' })
+      const msg = err instanceof Error ? err.message : String(err)
+      const isNetworkErr = msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')
+      setState({
+        status: 'error',
+        error: isNetworkErr
+          ? 'Network error — could not reach the server. If this persists check SSL/TLS config on the VPS (nginx ssl_buffer_size).'
+          : msg,
+      })
     }
   }
 
