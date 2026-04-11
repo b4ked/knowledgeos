@@ -204,13 +204,15 @@ export default function Home() {
     }
   }, [])
 
-  const syncLocalRagNote = useCallback(async (folder: NoteFolder, slug: string, content: string) => {
+  const syncLocalRagNote = useCallback(async (slug: string, content: string) => {
     if (vaultMode !== 'local' || !content.trim()) return
+    const adapter = browserAdapterRef.current
+    if (!adapter) return
 
     const res = await fetch('/api/embeddings/index', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder, notes: [{ slug, content }] }),
+      body: JSON.stringify({ folder: 'wiki', notes: [{ slug, content }] }),
     })
     const data = await res.json() as {
       entries?: Array<{ slug: string; contentHash: string; embedding: number[]; updatedAt: string }>
@@ -222,13 +224,13 @@ export default function Home() {
     }
 
     const entry = data.entries[0]
-    await upsertLocalRagEntry(folder, {
+    await upsertLocalRagEntry(adapter, {
       slug: entry.slug,
       contentHash: entry.contentHash,
       embedding: entry.embedding,
       updatedAt: entry.updatedAt,
     })
-    await writeLocalRagMeta(folder, data.meta)
+    await writeLocalRagMeta(adapter, data.meta)
   }, [vaultMode])
 
   const handleLocalTokenise = useCallback(async (folder: Folder): Promise<TokeniseResult> => {
@@ -238,7 +240,7 @@ export default function Home() {
     }
 
     const notes = await adapter.listNotes(folder)
-    const existing = new Map((await listLocalRagEntries(folder)).map((entry) => [entry.slug, entry]))
+    const existing = new Map((await listLocalRagEntries(adapter)).map((entry) => [entry.slug, entry]))
     const changedNotes: Array<{ slug: string; content: string }> = []
     let skipped = 0
 
@@ -293,7 +295,7 @@ export default function Home() {
     }
 
     await writeLocalRagEntries(
-      folder,
+      adapter,
       allEntries.map((entry) => ({
         slug: entry.slug,
         contentHash: entry.contentHash,
@@ -301,7 +303,7 @@ export default function Home() {
         updatedAt: entry.updatedAt,
       }))
     )
-    if (lastMeta) await writeLocalRagMeta(folder, lastMeta)
+    if (lastMeta) await writeLocalRagMeta(adapter, lastMeta)
 
     return {
       indexed: totalIndexed,
@@ -312,7 +314,8 @@ export default function Home() {
   }, [])
 
   const handleClearLocalRag = useCallback(async () => {
-    await clearLocalRagEntries()
+    const adapter = browserAdapterRef.current
+    if (adapter) await clearLocalRagEntries(adapter)
   }, [])
 
   const getLocalQueryNotes = useCallback(async (question: string) => {
@@ -331,7 +334,7 @@ export default function Home() {
       throw new Error(embeddingData.error ?? 'Could not search the local RAG index')
     }
 
-    const slugs = await retrieveLocalRagSlugs('wiki', embeddingData.embedding)
+    const slugs = await retrieveLocalRagSlugs(adapter, embeddingData.embedding)
     if (slugs.length === 0) {
       throw new Error('Local RAG index is empty. Open Settings and tokenise your wiki notes first.')
     }
@@ -588,7 +591,7 @@ export default function Home() {
     if (vaultMode === 'local' && note.folder === 'wiki' && browserAdapterRef.current) {
       const content = await browserAdapterRef.current.readNote(note.path).catch(() => '')
       if (content.trim()) {
-        await syncLocalRagNote('wiki', note.slug, content).catch(() => {})
+        await syncLocalRagNote(note.slug, content).catch(() => {})
       }
     }
     if (showGraph) await loadGraph()
@@ -636,7 +639,7 @@ export default function Home() {
         }
 
         await adapter.writeNote(data.outputPath, data.output)
-        await syncLocalRagNote('wiki', data.slug, data.output).catch(() => {})
+        await syncLocalRagNote(data.slug, data.output).catch(() => {})
         setCheckedSlugs(new Set())
         setFolder('wiki')
         await loadNotes('wiki')
@@ -1136,7 +1139,7 @@ export default function Home() {
                   onContentSaved={(newContent) => {
                     setNoteContent(newContent)
                     if (vaultMode === 'local' && folder === 'wiki') {
-                      syncLocalRagNote('wiki', selectedNote.slug, newContent).catch(() => {})
+                      syncLocalRagNote(selectedNote.slug, newContent).catch(() => {})
                     }
                   }}
                   browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
@@ -1150,7 +1153,7 @@ export default function Home() {
                   onContentSaved={(newContent) => {
                     setNoteContent(newContent)
                     if (vaultMode === 'local') {
-                      syncLocalRagNote('wiki', selectedNote.slug, newContent).catch(() => {})
+                      syncLocalRagNote(selectedNote.slug, newContent).catch(() => {})
                     }
                   }}
                   browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}

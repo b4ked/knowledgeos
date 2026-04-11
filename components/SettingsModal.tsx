@@ -361,34 +361,21 @@ export default function SettingsModal({
                 </h3>
                 <p className="text-xs text-gray-600 mb-4">
                   {vaultMode === 'local'
-                    ? 'Local vault mode stores embeddings in this browser\'s IndexedDB on this device and browser profile. They are not written into your selected vault folder. Chat retrieves from the local wiki-note index stored here.'
+                    ? 'Local vault mode stores embeddings as a .rag-index.json file inside your wiki folder. The index travels with your vault — reopen the same folder in any browser and the index is immediately available.'
                     : vaultMode === 'cloud'
                     ? 'Cloud vault mode stores embeddings in your Supabase/Postgres account database. Chat retrieves from your indexed wiki notes stored there.'
                     : 'Demo mode stores embeddings on the server. Tokenise notes here before using RAG chat.'}
                 </p>
 
-                <div className="space-y-4">
-                  <div className="border border-gray-800 rounded-lg p-4">
-                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-                      Raw notes index
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">
-                      Index your raw notes. Wiki notes are used first for chat, but raw indexing can help with later workflows.
-                    </p>
-                    <TokeniseRow folder="raw" />
-                  </div>
-
-                  <div className="border border-gray-800 rounded-lg p-4">
-                    <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                      Wiki notes index
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">
-                      Index your compiled wiki notes. Chat answers are grounded in the wiki notes currently present in this vault.
-                    </p>
-                    <TokeniseRow folder="wiki" />
-                  </div>
+                <div className="border border-gray-800 rounded-lg p-4">
+                  <label className="block text-xs text-gray-400 mb-1.5 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                    Wiki notes index
+                  </label>
+                  <p className="text-xs text-gray-600 mb-2">
+                    Index your compiled wiki notes. Chat answers are grounded in the wiki notes currently present in this vault.
+                  </p>
+                  <TokeniseRow folder="wiki" />
                 </div>
               </section>
 
