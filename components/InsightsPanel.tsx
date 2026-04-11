@@ -1,11 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { GraphInsights, NodeDegree, Cluster } from '@/lib/graph/analyze'
+import type { GraphInsights, NodeDegree } from '@/lib/graph/analyze'
+import type { GraphData } from '@/lib/graph/parseLinks'
+import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
 interface InsightsPanelProps {
   onClose: () => void
   onNoteClick?: (slug: string) => void
+  /** When provided, insights are computed client-side (local vault mode) */
+  localGraphData?: GraphData
+  /** Browser adapter for local semantic clustering */
+  browserAdapter?: BrowserVaultAdapter | null
+  vaultMode?: 'local' | 'cloud' | 'remote'
 }
 
 interface InsightsResponse {
@@ -17,13 +24,21 @@ interface InsightsResponse {
 
 type Tab = 'overview' | 'hubs' | 'gaps' | 'clusters' | 'semantic'
 
-export default function InsightsPanel({ onClose, onNoteClick }: InsightsPanelProps) {
+export default function InsightsPanel({
+  onClose,
+  onNoteClick,
+  localGraphData,
+  browserAdapter,
+  vaultMode,
+}: InsightsPanelProps) {
+  const isLocalMode = vaultMode === 'local' && !!localGraphData
   const [data, setData] = useState<InsightsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [semanticLoading, setSemanticLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
 
+  /** Cloud/remote: fetch from API */
   const fetchInsights = useCallback(async (mode: 'graph' | 'semantic' = 'graph') => {
     if (mode === 'semantic') {
       setSemanticLoading(true)
@@ -47,14 +62,59 @@ export default function InsightsPanel({ onClose, onNoteClick }: InsightsPanelPro
     }
   }, [])
 
+  /** Local mode: compute insights in-browser from graphData */
+  const computeLocalInsights = useCallback(async (mode: 'graph' | 'semantic' = 'graph') => {
+    if (!localGraphData) return
+    if (mode === 'semantic') {
+      setSemanticLoading(true)
+    } else {
+      setLoading(true)
+    }
+    setError(null)
+    try {
+      const { analyzeGraph } = await import('@/lib/graph/analyze')
+      const insights = analyzeGraph(localGraphData)
+
+      let semanticClusters: InsightsResponse['semanticClusters'] = null
+      if (mode === 'semantic' && browserAdapter) {
+        const { listLocalRagEntries } = await import('@/lib/rag/browserStore')
+        const entries = await listLocalRagEntries(browserAdapter)
+        semanticClusters = computeLocalSemanticClusters(entries)
+      }
+
+      setData((prev) => ({
+        insights,
+        graphData: {
+          nodeCount: localGraphData.nodes.length,
+          edgeCount: localGraphData.edges.length,
+        },
+        semanticClusters: semanticClusters ?? prev?.semanticClusters ?? null,
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to compute local insights')
+    } finally {
+      setLoading(false)
+      setSemanticLoading(false)
+    }
+  }, [localGraphData, browserAdapter])
+
+  const loadInsights = useCallback((mode: 'graph' | 'semantic' = 'graph') => {
+    if (isLocalMode) {
+      computeLocalInsights(mode)
+    } else {
+      fetchInsights(mode)
+    }
+  }, [isLocalMode, computeLocalInsights, fetchInsights])
+
   useEffect(() => {
-    fetchInsights('graph')
-  }, [fetchInsights])
+    loadInsights('graph')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleTabChange(next: Tab) {
     setTab(next)
     if (next === 'semantic' && data && !data.semanticClusters) {
-      fetchInsights('semantic')
+      loadInsights('semantic')
     }
   }
 
@@ -100,7 +160,7 @@ export default function InsightsPanel({ onClose, onNoteClick }: InsightsPanelPro
           ))}
           <div className="flex-1" />
           <button
-            onClick={() => fetchInsights(tab === 'semantic' ? 'semantic' : 'graph')}
+            onClick={() => loadInsights(tab === 'semantic' ? 'semantic' : 'graph')}
             className="px-3 text-xs text-gray-600 hover:text-gray-400 transition-colors"
             title="Refresh"
           >
@@ -448,6 +508,53 @@ function NoteChip({ node, onNoteClick, accent }: { node: NodeDegree; onNoteClick
       <span className="text-xs opacity-60 shrink-0">{node.totalDegree} links</span>
     </button>
   )
+}
+
+// --- Local semantic clustering (runs in-browser) ---
+
+interface LocalRagEntry { slug: string; embedding: number[] }
+
+function computeLocalSemanticClusters(
+  entries: LocalRagEntry[],
+): Array<{ id: number; slugs: string[]; centroid?: string }> {
+  if (entries.length < 2) return []
+  const sample = entries.slice(0, 50)
+  const THRESHOLD = 0.65
+
+  const clusterOf = new Map<string, number>()
+  let nextCluster = 0
+
+  for (let i = 0; i < sample.length; i++) {
+    const a = sample[i]
+    if (clusterOf.has(a.slug)) continue
+    const clusterId = nextCluster++
+    clusterOf.set(a.slug, clusterId)
+    for (let j = i + 1; j < sample.length; j++) {
+      const b = sample[j]
+      if (clusterOf.has(b.slug)) continue
+      if (a.embedding.length !== b.embedding.length) continue
+      let dot = 0, mA = 0, mB = 0
+      for (let k = 0; k < a.embedding.length; k++) {
+        dot += a.embedding[k] * b.embedding[k]
+        mA += a.embedding[k] * a.embedding[k]
+        mB += b.embedding[k] * b.embedding[k]
+      }
+      const mag = Math.sqrt(mA) * Math.sqrt(mB)
+      const sim = mag === 0 ? 0 : dot / mag
+      if (sim >= THRESHOLD) clusterOf.set(b.slug, clusterId)
+    }
+  }
+
+  const clusterMap = new Map<number, string[]>()
+  for (const [slug, id] of clusterOf) {
+    if (!clusterMap.has(id)) clusterMap.set(id, [])
+    clusterMap.get(id)!.push(slug)
+  }
+
+  return Array.from(clusterMap.entries())
+    .map(([id, slugs]) => ({ id, slugs, centroid: slugs[0] }))
+    .filter((c) => c.slugs.length >= 2)
+    .sort((a, b) => b.slugs.length - a.slugs.length)
 }
 
 function DegreeBar({ degrees }: { degrees: NodeDegree[] }) {

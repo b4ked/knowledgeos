@@ -84,6 +84,7 @@ export default function Home() {
   const [localTags, setLocalTags] = useState<Tag[]>([])
   const [highlightedSlugs, setHighlightedSlugs] = useState<Set<string>>(new Set())
   const [chatWidth, setChatWidth] = useState(320)
+  const graphDataRef = useRef<GraphData>({ nodes: [], edges: [] })
   const isResizingChat = useRef(false)
   const isResizingSidebar = useRef(false)
   const resizeStartX = useRef(0)
@@ -338,7 +339,29 @@ export default function Home() {
       throw new Error(embeddingData.error ?? 'Could not search the local RAG index')
     }
 
-    const slugs = await retrieveLocalRagSlugs(adapter, embeddingData.embedding)
+    const questionEmbedding = embeddingData.embedding
+    const currentGraph = graphDataRef.current
+
+    // Use graph-aware retrieval if graph has edges, otherwise fall back to standard
+    let slugs: string[]
+    if (currentGraph.edges.length > 0) {
+      try {
+        const { graphAwareRetrieve } = await import('@/lib/rag/graphAwareRetrieve')
+        const entries = await listLocalRagEntries(adapter)
+        const results = graphAwareRetrieve(questionEmbedding, entries, currentGraph, {
+          topK: 5,
+          semanticWeight: 0.7,
+          minScore: 0.05,
+        })
+        slugs = results.map((r) => r.slug)
+      } catch {
+        // Fall back to standard retrieval
+        slugs = await retrieveLocalRagSlugs(adapter, questionEmbedding)
+      }
+    } else {
+      slugs = await retrieveLocalRagSlugs(adapter, questionEmbedding)
+    }
+
     if (slugs.length === 0) {
       throw new Error('Local RAG index is empty. Open Settings and tokenise your wiki notes first.')
     }
@@ -411,11 +434,19 @@ export default function Home() {
             type: 'raw' as const,
           }))),
         ])
-        setGraphData(parseLinks([...wikiNotes, ...rawNotes]))
+        const built = parseLinks([...wikiNotes, ...rawNotes])
+        setGraphData(built)
+        graphDataRef.current = built
+        // Persist graph analysis to wiki/.graph-index.json
+        import('@/lib/graph/localGraphStore')
+          .then(({ persistLocalGraphInsights }) => persistLocalGraphInsights(adapter, built))
+          .catch(() => { /* non-fatal */ })
       } else {
         const res = await fetch('/api/graph')
         if (res.ok) {
-          setGraphData(await res.json() as GraphData)
+          const gd = await res.json() as GraphData
+          setGraphData(gd)
+          graphDataRef.current = gd
         }
       }
     } finally {
@@ -1313,6 +1344,9 @@ export default function Home() {
             setShowInsights(false)
             handleWikilinkClick(slug)
           }}
+          vaultMode={vaultMode}
+          localGraphData={vaultMode === 'local' ? graphData : undefined}
+          browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : undefined}
         />
       )}
 
