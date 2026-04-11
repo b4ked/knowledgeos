@@ -37,6 +37,7 @@ import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import UserMenu from '@/components/UserMenu'
 import FrontmatterPanel from '@/components/FrontmatterPanel'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
+import InsightsPanel from '@/components/InsightsPanel'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -71,6 +72,7 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false)
   const [showClip, setShowClip] = useState(false)
   const [showTags, setShowTags] = useState(false)
+  const [showInsights, setShowInsights] = useState(false)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
@@ -939,6 +941,15 @@ export default function Home() {
             Tags
           </button>
           <button
+            onClick={() => setShowInsights(true)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showInsights ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="Vault insights"
+          >
+            Insights
+          </button>
+          <button
             onClick={() => setShowHelp(true)}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="Help"
@@ -1291,6 +1302,17 @@ export default function Home() {
           }}
           vaultMode={vaultMode}
           browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
+        />
+      )}
+
+      {/* Insights panel */}
+      {showInsights && (
+        <InsightsPanel
+          onClose={() => setShowInsights(false)}
+          onNoteClick={(slug) => {
+            setShowInsights(false)
+            handleWikilinkClick(slug)
+          }}
         />
       )}
 

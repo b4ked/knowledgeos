@@ -9,6 +9,9 @@ import { getAdapter } from '@/lib/vault/getAdapter'
 import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
 import { cosineSimilarity } from '@/lib/embeddings/cosine'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
+import { parseLinks } from '@/lib/graph/parseLinks'
+import { graphAwareRetrieveFromCloud } from '@/lib/rag/graphAwareRetrieve'
+import type { NoteInput } from '@/lib/graph/parseLinks'
 
 interface QueryNoteInput {
   slug: string
@@ -44,7 +47,7 @@ async function queryFromNotes(question: string, notes: QueryNoteInput[]) {
   return { answer, sources }
 }
 
-async function queryFromCloud(question: string, userId: string) {
+async function queryFromCloud(question: string, userId: string, useGraphAware = true) {
   const llm = getLLMProvider()
   const embeddings = await listUserEmbeddings(userId, 'wiki')
 
@@ -57,22 +60,52 @@ async function queryFromCloud(question: string, userId: string) {
 
   const questionEmbedding = await llm.embed(question)
   const adapter = await getAdapter(userId)
-  const retrieved = embeddings
-    .map((entry) => ({
-      slug: entry.slug,
-      score: cosineSimilarity(questionEmbedding, entry.embedding),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .filter((entry) => entry.score >= 0.1)
+
+  let slugsToRetrieve: string[]
+
+  if (useGraphAware) {
+    // Build live graph for graph-aware retrieval
+    try {
+      const wikiMeta = await adapter.listNotes('wiki')
+      const wikiNotes: NoteInput[] = await Promise.all(
+        wikiMeta.map(async (m) => ({
+          slug: m.slug,
+          content: await adapter.readNote(m.path).catch(() => ''),
+          type: 'wiki' as const,
+        }))
+      )
+      const graphData = parseLinks(wikiNotes)
+      const graphResults = graphAwareRetrieveFromCloud(questionEmbedding, embeddings, graphData, {
+        topK: 5,
+        semanticWeight: 0.7,
+        minScore: 0.08,
+      })
+      slugsToRetrieve = graphResults.map((r) => r.slug)
+    } catch {
+      // Fall back to standard RAG if graph-aware fails
+      slugsToRetrieve = embeddings
+        .map((entry) => ({ slug: entry.slug, score: cosineSimilarity(questionEmbedding, entry.embedding) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .filter((entry) => entry.score >= 0.1)
+        .map((entry) => entry.slug)
+    }
+  } else {
+    slugsToRetrieve = embeddings
+      .map((entry) => ({ slug: entry.slug, score: cosineSimilarity(questionEmbedding, entry.embedding) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .filter((entry) => entry.score >= 0.1)
+      .map((entry) => entry.slug)
+  }
 
   const sources: string[] = []
   const context: string[] = []
 
-  for (const entry of retrieved) {
-    const content = await adapter.readNote(`wiki/${entry.slug}.md`).catch(() => '')
+  for (const slug of slugsToRetrieve) {
+    const content = await adapter.readNote(`wiki/${slug}.md`).catch(() => '')
     if (!content.trim()) continue
-    sources.push(entry.slug)
+    sources.push(slug)
     context.push(content)
   }
 
