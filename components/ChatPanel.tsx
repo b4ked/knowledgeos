@@ -69,11 +69,12 @@ interface ChatPanelProps {
   onSourceClick: (slug: string) => void
   onSourcesUpdate?: (slugs: string[]) => void
   onQueryComplete?: () => void
+  onQueryInsights?: (query: string, sources: string[]) => void
   vaultMode?: VaultMode
   getLocalNotesForQuery?: (question: string) => Promise<Array<{ slug: string; content: string }>>
 }
 
-export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryComplete, vaultMode = 'remote', getLocalNotesForQuery }: ChatPanelProps) {
+export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryComplete, onQueryInsights, vaultMode = 'remote', getLocalNotesForQuery }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -129,6 +130,7 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryCompl
         { role: 'assistant', content: data.answer ?? '', sources },
       ])
       onSourcesUpdate?.(sources)
+      onQueryInsights?.(question, sources)
       onQueryComplete?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error — could not reach query API')

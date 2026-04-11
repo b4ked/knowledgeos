@@ -38,6 +38,8 @@ import UserMenu from '@/components/UserMenu'
 import FrontmatterPanel from '@/components/FrontmatterPanel'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 import InsightsPanel from '@/components/InsightsPanel'
+import GraphQueryBar from '@/components/GraphQueryBar'
+import type { QueryInsights } from '@/components/GraphQueryBar'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
@@ -73,6 +75,7 @@ export default function Home() {
   const [showClip, setShowClip] = useState(false)
   const [showTags, setShowTags] = useState(false)
   const [showInsights, setShowInsights] = useState(false)
+  const [queryInsights, setQueryInsights] = useState<QueryInsights | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
@@ -1261,6 +1264,15 @@ export default function Home() {
                   />
                 )}
               </div>
+              {queryInsights && (
+                <GraphQueryBar
+                  insights={queryInsights}
+                  graphData={graphData}
+                  onNodeFocus={(slug) => setHighlightedSlugs(new Set([slug]))}
+                  onNoteOpen={handleChatSourceClick}
+                  onDismiss={() => setQueryInsights(null)}
+                />
+              )}
             </aside>
           )}
 
@@ -1284,6 +1296,7 @@ export default function Home() {
                 <ChatPanel
                   onSourceClick={handleChatSourceClick}
                   onSourcesUpdate={(slugs) => setHighlightedSlugs(new Set(slugs))}
+                  onQueryInsights={(query, sources) => setQueryInsights({ query, sources })}
                   onQueryComplete={() => setUsageVersion((v) => v + 1)}
                   vaultMode={vaultMode}
                   getLocalNotesForQuery={vaultMode === 'local' ? getLocalQueryNotes : undefined}
