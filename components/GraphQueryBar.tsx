@@ -173,7 +173,13 @@ export default function GraphQueryBar({
     () => Math.max(1, ...sources.map((s) => getNodeDegree(s, graphData))),
     [sources, graphData]
   )
-  const totalEdges = useMemo(() => graphData.edges.length, [graphData])
+  const coveragePct = useMemo(
+    () => Math.min(
+      100,
+      Math.round(((sources.length + neighbors.length) / Math.max(1, graphData.nodes.filter((n) => n.type !== 'stub').length)) * 100)
+    ),
+    [sources, neighbors.length, graphData]
+  )
 
   const relevantPassages = useMemo(
     () => noteContent ? extractRelevantPassages(noteContent, keywords) : [],
@@ -189,23 +195,49 @@ export default function GraphQueryBar({
     <div
       ref={barRef}
       className={`shrink-0 border-t border-gray-800 bg-gray-950/98 transition-all duration-300 ${
-        visible ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
+        visible ? 'max-h-[26rem] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
       }`}
     >
-      <div className="flex flex-col h-full">
-
-        {/* Main row */}
-        <div className="flex items-stretch gap-0 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 min-h-0 flex-1">
-
-          {/* Query + keywords */}
-          <div className="shrink-0 px-4 py-3 border-r border-gray-800 min-w-[190px] max-w-[230px] flex flex-col gap-2">
-            <div>
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Query</p>
-              <p className="text-xs text-gray-300 leading-snug line-clamp-2" title={query}>{query}</p>
+      <div className="flex h-full min-h-[18rem]">
+        <aside className="w-32 shrink-0 border-r border-gray-800 px-3 py-3 flex flex-col gap-3 bg-gray-950">
+          <div>
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1">Coverage</p>
+            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-1.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-700"
+                style={{ width: `${coveragePct}%` }}
+              />
             </div>
-            <div>
-              <p className="text-[10px] text-gray-600 mb-1">Keywords</p>
-              <div className="flex flex-wrap gap-1">
+            <p className="text-[10px] text-gray-500 mt-1 tabular-nums">{coveragePct}% of graph nearby</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            <StatCard value={sources.length} label="sources" color="blue" icon="◉" />
+            <StatCard value={clusterCount} label="clusters" color="purple" icon="⬡" />
+            <StatCard value={neighbors.length} label="neighbors" color="green" icon="⇌" />
+          </div>
+
+          <div className="mt-auto">
+            <button
+              onClick={onDismiss}
+              className="text-gray-700 hover:text-gray-400 transition-colors text-base leading-none"
+              title="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </aside>
+
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-h-0 border-b border-gray-800 px-4 py-3">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1">
+                  Sources <span className="text-gray-600 font-normal normal-case ml-1">{sources.length}</span>
+                </p>
+                <p className="text-xs text-gray-300 leading-snug" title={query}>{query}</p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-1 max-w-[40%]">
                 {keywords.map((kw) => {
                   const hits = keywordMentions(kw, graphData)
                   return (
@@ -220,22 +252,13 @@ export default function GraphQueryBar({
                       title={hits.length > 0 ? `In: ${hits.join(', ')}` : 'Not found in graph'}
                     >
                       {kw}
-                      {hits.length > 0 && (
-                        <span className="ml-1 opacity-50 text-[9px]">{hits.length}</span>
-                      )}
                     </button>
                   )
                 })}
               </div>
             </div>
-          </div>
 
-          {/* Source nodes */}
-          <div className="shrink-0 px-3 py-3 border-r border-gray-800 flex flex-col gap-2 min-w-[300px]">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">
-              Sources <span className="text-gray-600 font-normal normal-case ml-1">{sources.length}</span>
-            </p>
-            <div className="flex gap-2 flex-1 items-start">
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-2 overflow-y-auto max-h-full pr-1">
               {sources.length === 0 ? (
                 <p className="text-xs text-gray-700 mt-2">No sources</p>
               ) : (
@@ -249,7 +272,7 @@ export default function GraphQueryBar({
                     <div
                       key={slug}
                       onClick={() => handleNodeFocus(slug)}
-                      className={`group flex flex-col gap-1.5 p-2.5 rounded-lg border cursor-pointer transition-all shrink-0 min-w-[120px] max-w-[150px] ${
+                      className={`group flex flex-col gap-1.5 p-2.5 rounded-lg border cursor-pointer transition-all min-w-0 ${
                         isFocused
                           ? `bg-blue-950/50 border-blue-600/60 ring-1 ${TYPE_RING[type ?? 'stub']}`
                           : 'bg-gray-900/80 border-gray-700/40 hover:border-gray-500/50 hover:bg-gray-800/60'
@@ -293,96 +316,15 @@ export default function GraphQueryBar({
             </div>
           </div>
 
-          {/* Connected neighbors */}
-          {neighbors.length > 0 && (
-            <div className="shrink-0 px-3 py-3 border-r border-gray-800 min-w-[160px]">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-2">
-                Connected <span className="text-gray-600 font-normal normal-case">{neighbors.length}</span>
-              </p>
-              <div className="flex flex-col gap-1">
-                {neighbors.map((slug) => {
-                  const type = getNodeType(slug, graphData)
-                  const label = getLabel(slug, graphData)
-                  const degree = getNodeDegree(slug, graphData)
-                  return (
-                    <button
-                      key={slug}
-                      onClick={() => handleNodeFocus(slug)}
-                      className="flex items-center gap-2 px-2 py-1 rounded bg-gray-900/60 hover:bg-gray-800 border border-gray-800/80 hover:border-gray-700 transition-all text-left group"
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 opacity-50 ${TYPE_DOT[type ?? 'stub']}`} />
-                      <span className="text-[11px] text-gray-500 group-hover:text-gray-200 truncate flex-1 transition-colors" title={slug}>
-                        {label}
-                      </span>
-                      <span className="text-[9px] text-gray-700 shrink-0 tabular-nums">{degree}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
-          <div className="shrink-0 px-4 py-3 min-w-[160px] flex flex-col gap-2">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Coverage</p>
-
-            {/* Visual stat grid */}
-            <div className="grid grid-cols-2 gap-2">
-              <StatCard value={sources.length} label="sources" color="blue" icon="◉" />
-              <StatCard value={clusterCount} label="clusters" color="purple" icon="⬡" />
-              <StatCard value={neighbors.length} label="neighbors" color="green" icon="⇌" />
-              <StatCard value={maxDegree} label="max links" color="amber" icon="↕" />
-            </div>
-
-            {/* Coverage bar */}
-            {totalEdges > 0 && (
-              <div className="mt-1 space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-[9px] text-gray-700">graph coverage</span>
-                  <span className="text-[9px] text-gray-500 tabular-nums">
-                    {Math.min(100, Math.round(((sources.length + neighbors.length) / Math.max(1, graphData.nodes.filter(n => n.type !== 'stub').length)) * 100))}%
-                  </span>
-                </div>
-                <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, Math.round(((sources.length + neighbors.length) / Math.max(1, graphData.nodes.filter(n => n.type !== 'stub').length)) * 100))}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Dismiss */}
-          <div className="ml-auto shrink-0 px-3 py-3">
-            <button
-              onClick={onDismiss}
-              className="text-gray-700 hover:text-gray-400 transition-colors text-base leading-none"
-              title="Dismiss"
-            >
-              ×
-            </button>
-          </div>
-
-        </div>
-
-        {/* Passages row — shown when a source is focused */}
-        {focusedSlug && (
-          <div className="border-t border-gray-800 px-4 py-2 bg-gray-900/40 flex gap-4 items-start min-h-0">
-            <div className="shrink-0">
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-1">
-                Top passages
-                <span className="text-gray-700 font-normal normal-case ml-1">from {getLabel(focusedSlug, graphData)}</span>
-              </p>
-            </div>
+          <div className="flex-1 min-h-0 px-4 py-3 bg-gray-900/30 overflow-y-auto">
             {loadingContent ? (
               <p className="text-[11px] text-gray-700 italic mt-0.5">Loading…</p>
             ) : relevantPassages.length > 0 ? (
-              <div className="flex gap-3 overflow-x-auto flex-1">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 {relevantPassages.map((p, i) => (
                   <div
                     key={i}
-                    className="shrink-0 max-w-[260px] bg-gray-900 border border-gray-800 rounded px-2.5 py-1.5"
+                    className="bg-gray-900 border border-gray-800 rounded px-3 py-2"
                   >
                     <p className="text-[11px] text-gray-400 leading-relaxed">{p.text}</p>
                     <div className="flex gap-0.5 mt-1">
@@ -393,14 +335,17 @@ export default function GraphQueryBar({
                   </div>
                 ))}
               </div>
-            ) : noteContent ? (
+            ) : focusedSlug && noteContent ? (
               <p className="text-[11px] text-gray-700 italic mt-0.5">No strong keyword matches in this note</p>
-            ) : (
+            ) : focusedSlug ? (
               <p className="text-[11px] text-gray-700 italic mt-0.5">Could not load note content</p>
+            ) : (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-[11px] text-gray-700 italic">Select a source above to inspect matching passages</p>
+              </div>
             )}
           </div>
-        )}
-
+        </div>
       </div>
     </div>
   )
