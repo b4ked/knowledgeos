@@ -577,8 +577,11 @@ export default function Home() {
   }, [folder, loadNotes, vaultMode])
 
   useEffect(() => {
-    if (showGraph) loadGraph()
-  }, [showGraph, loadGraph])
+    if (!showGraph) return
+    if (sessionStatus === 'loading') return
+    if (!vaultModeLoaded) return
+    void loadGraph()
+  }, [showGraph, loadGraph, sessionStatus, vaultModeLoaded])
 
   useEffect(() => {
     if (sessionStatus !== 'unauthenticated') return
@@ -587,7 +590,7 @@ export default function Home() {
     setLocalHandleMissing(false)
     resetVaultUi('wiki')
     setVaultMode('remote')
-  }, [sessionStatus])
+  }, [sessionStatus, resetVaultUi])
 
   useEffect(() => {
     if (!vaultModeLoaded || vaultMode !== 'local' || !localHandleMissing) return
