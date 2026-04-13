@@ -1,28 +1,32 @@
-import NextAuth from "next-auth"
-import { authConfig } from "./auth.config"
 import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 
-const { auth } = NextAuth(authConfig)
+const protectedRoutes = ["/billing", "/usage", "/account"]
+const authOnlyRoutes = ["/login", "/signup", "/forgot-password"]
+const sessionCookiePrefixes = ["authjs.session-token", "__Secure-authjs.session-token"]
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth
-  const { pathname } = req.nextUrl
+function hasSessionCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((cookie) =>
+    sessionCookiePrefixes.some((prefix) => cookie.name === prefix || cookie.name.startsWith(`${prefix}.`))
+  )
+}
 
-  const protectedRoutes = ["/billing", "/usage", "/account"]
-  const authOnlyRoutes = ["/login", "/signup", "/forgot-password"]
+export default function proxy(request: NextRequest) {
+  const isLoggedIn = hasSessionCookie(request)
+  const { pathname } = request.nextUrl
 
-  if (protectedRoutes.some((r) => pathname.startsWith(r)) && !isLoggedIn) {
-    const loginUrl = new URL(req.nextUrl.origin + "/login")
+  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !isLoggedIn) {
+    const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("callbackUrl", pathname)
     return NextResponse.redirect(loginUrl)
   }
 
   if (authOnlyRoutes.includes(pathname) && isLoggedIn) {
-    return NextResponse.redirect(new URL(req.nextUrl.origin + "/"))
+    return NextResponse.redirect(new URL("/", request.url))
   }
 
   return NextResponse.next()
-})
+}
 
 export const config = {
   matcher: [
