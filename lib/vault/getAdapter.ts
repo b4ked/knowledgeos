@@ -7,6 +7,7 @@ import type { VaultAdapter } from './VaultAdapter'
 import { db } from '@/lib/db'
 import { userPreferences } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { getVpsConfig } from '@/lib/vpsProxy'
 
 export type ServerVaultMode = 'remote' | 'cloud'
 
@@ -29,11 +30,9 @@ export async function getAdapter(userId?: string): Promise<VaultAdapter> {
   const mode = process.env.VAULT_MODE ?? 'local'
 
   if (mode === 'remote') {
-    const baseUrl = process.env.VPS_BASE_URL
-    const token = process.env.VPS_API_TOKEN
-    if (!baseUrl) throw new Error('VPS_BASE_URL is required when VAULT_MODE=remote')
-    if (!token) throw new Error('VPS_API_TOKEN is required when VAULT_MODE=remote')
-    return new RemoteVaultAdapter(baseUrl, token)
+    const vps = getVpsConfig()
+    if (!vps) throw new Error('VPS remote config is required when VAULT_MODE=remote')
+    return new RemoteVaultAdapter(vps.baseUrl, vps.token)
   }
 
   // Default: local filesystem adapter

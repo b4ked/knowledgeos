@@ -3,9 +3,28 @@
  * should run on the VPS backend which has the LLM API key and a writable
  * filesystem. This helper proxies the request to the VPS.
  */
+const DEFAULT_PUBLIC_VPS_BASE_URL = 'https://knos-api.parrytech.co'
+
+function resolveVpsBaseUrl(rawBaseUrl?: string | null): string | null {
+  const baseUrl = rawBaseUrl?.trim()
+  if (!baseUrl) {
+    return process.env.VERCEL ? DEFAULT_PUBLIC_VPS_BASE_URL : null
+  }
+
+  try {
+    const url = new URL(baseUrl)
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && process.env.VERCEL) {
+      return process.env.VPS_PUBLIC_BASE_URL?.trim() || DEFAULT_PUBLIC_VPS_BASE_URL
+    }
+    return baseUrl
+  } catch {
+    return baseUrl
+  }
+}
+
 export function getVpsConfig(): { baseUrl: string; token: string } | null {
   if (process.env.VAULT_MODE !== 'remote') return null
-  const baseUrl = process.env.VPS_BASE_URL
+  const baseUrl = resolveVpsBaseUrl(process.env.VPS_BASE_URL)
   const token = process.env.VPS_API_TOKEN
   if (!baseUrl || !token) return null
   return { baseUrl, token }
