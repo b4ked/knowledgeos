@@ -151,6 +151,17 @@ export default function Home() {
     return await res.json() as Record<string, unknown>
   }, [])
 
+  const arrayBufferToBase64 = useCallback((buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer)
+    const chunkSize = 0x8000
+    let binary = ''
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize)
+      binary += String.fromCharCode(...chunk)
+    }
+    return btoa(binary)
+  }, [])
+
   const listVaultNotes = useCallback(async (targetFolder: Folder): Promise<NoteMetadata[]> => {
     if (vaultMode === 'local') {
       const adapter = browserAdapterRef.current
@@ -936,31 +947,47 @@ export default function Home() {
     setSharedImportPreset('default')
 
     try {
-      const formData = new FormData()
-      for (const file of droppedFiles) formData.append('files', file)
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json() as {
-        results?: Array<{
-          filename: string
-          ok: boolean
-          error?: string
-          markdown?: string
-          suggestedSlug?: string
-          mimeType?: string
-        }>
+      const uploadedResults: Array<{
+        filename: string
+        ok: boolean
         error?: string
-      }
+        markdown?: string
+        suggestedSlug?: string
+        mimeType?: string
+      }> = []
 
-      if (!res.ok || !Array.isArray(data.results)) {
-        throw new Error(data.error ?? 'Could not upload files')
+      for (const file of droppedFiles) {
+        const arrayBuffer = await file.arrayBuffer()
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            files: [{
+              filename: file.name,
+              content: arrayBufferToBase64(arrayBuffer),
+              mimeType: file.type,
+            }],
+          }),
+        })
+        const data = await res.json() as {
+          results?: Array<{
+            filename: string
+            ok: boolean
+            error?: string
+            markdown?: string
+            suggestedSlug?: string
+            mimeType?: string
+          }>
+          error?: string
+        }
+        if (!res.ok || !Array.isArray(data.results) || data.results.length === 0) {
+          throw new Error(data.error ?? `Could not upload ${file.name}`)
+        }
+        uploadedResults.push(data.results[0])
       }
 
       const nextFiles: ImportedFileResult[] = []
-      for (const [index, result] of data.results.entries()) {
+      for (const [index, result] of uploadedResults.entries()) {
         const clientId = `${Date.now()}-${index}-${result.filename}`
         if (!result.ok || !result.markdown?.trim()) {
           nextFiles.push({
@@ -1466,7 +1493,6 @@ export default function Home() {
                 : 'border-gray-800 bg-gray-900 text-gray-500'
             }`}>
               <p>Drag and drop up to 10 files</p>
-              <p className="mt-1 text-[11px] text-gray-600">Text is extracted on the VPS, then saved to your current vault.</p>
             </div>
 
             {showTags && (

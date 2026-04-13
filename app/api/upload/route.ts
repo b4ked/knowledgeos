@@ -10,7 +10,25 @@ const ALLOWED_EXTENSIONS = new Set([
   '.rtf', '.xml', '.json',
 ])
 
-export async function POST(request: Request) {
+async function readPayload(request: Request): Promise<File[] | Array<{ filename: string; content: string; mimeType?: string }>> {
+  const contentType = request.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    const body = await request.json() as {
+      files?: Array<{ filename?: string; content?: string; mimeType?: string }>
+      filename?: string
+      content?: string
+      mimeType?: string
+    }
+
+    return Array.isArray(body.files)
+      ? body.files
+          .filter((file): file is { filename: string; content: string; mimeType?: string } => !!file?.filename && !!file?.content)
+      : body.filename && body.content
+        ? [{ filename: body.filename, content: body.content, mimeType: body.mimeType }]
+        : []
+  }
+
   const formData = await request.formData()
   const entries = formData.getAll('files')
   const files = entries.filter((entry): entry is File => entry instanceof File)
@@ -20,6 +38,12 @@ export async function POST(request: Request) {
     if (single instanceof File) files.push(single)
   }
 
+  return files
+}
+
+export async function POST(request: Request) {
+  const files = await readPayload(request)
+
   if (files.length === 0) {
     return Response.json({ error: 'No files provided' }, { status: 400 })
   }
@@ -28,7 +52,8 @@ export async function POST(request: Request) {
   }
 
   for (const file of files) {
-    const ext = ('.' + (file.name.split('.').pop() ?? '')).toLowerCase()
+    const filename = file instanceof File ? file.name : file.filename
+    const ext = ('.' + (filename.split('.').pop() ?? '')).toLowerCase()
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       return Response.json({ error: `Unsupported file type: ${ext}` }, { status: 400 })
     }
@@ -44,6 +69,7 @@ export async function POST(request: Request) {
 
   const payload = await Promise.all(
     files.map(async (file) => {
+      if (!(file instanceof File)) return file
       const arrayBuffer = await file.arrayBuffer()
       return {
         filename: file.name,
