@@ -533,6 +533,20 @@ export default function Home() {
   }, [showGraph, loadGraph])
 
   useEffect(() => {
+    if (sessionStatus !== 'unauthenticated') return
+
+    browserAdapterRef.current = null
+    setLocalHandleMissing(false)
+    setVaultMode('remote')
+    setFolder('wiki')
+    setNotes([])
+    setSelectedNote(null)
+    setNoteContent('')
+    setCheckedSlugs(new Set())
+    setCompileError(null)
+  }, [sessionStatus])
+
+  useEffect(() => {
     if (!vaultModeLoaded || vaultMode !== 'local' || !localHandleMissing) return
     addToast('Reconnect your local vault folder in Settings to continue using local mode.', 'info')
   }, [vaultModeLoaded, vaultMode, localHandleMissing, addToast])

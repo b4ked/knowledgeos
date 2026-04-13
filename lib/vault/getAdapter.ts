@@ -5,6 +5,20 @@ import { CloudVaultAdapter } from './CloudVaultAdapter'
 import { readSettings } from './settings'
 import type { VaultAdapter } from './VaultAdapter'
 import { db } from '@/lib/db'
+import { userPreferences } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+
+export type ServerVaultMode = 'remote' | 'cloud'
+
+export async function getServerVaultMode(userId?: string): Promise<ServerVaultMode> {
+  if (!userId) return 'remote'
+
+  const prefs = await db.query.userPreferences.findFirst({
+    where: eq(userPreferences.userId, userId),
+  })
+
+  return prefs?.vaultMode === 'remote' ? 'remote' : 'cloud'
+}
 
 export async function getAdapter(userId?: string): Promise<VaultAdapter> {
   // If a userId is provided, use the cloud (database-backed) adapter

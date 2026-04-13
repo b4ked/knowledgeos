@@ -1,5 +1,5 @@
 import { auth } from '@/auth'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 
 export async function POST(request: Request) {
   const body = await request.json() as { folder?: string; folderPath?: string }
@@ -13,7 +13,8 @@ export async function POST(request: Request) {
   }
 
   const session = await auth()
-  const adapter = await getAdapter(session?.user?.id ?? undefined)
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
   await adapter.ensureDirectories()
   await adapter.writeNote(`${folder}/${folderPath}/.keep`, '')
 

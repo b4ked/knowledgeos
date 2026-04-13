@@ -1,6 +1,6 @@
 import path from 'path'
 import { auth } from '@/auth'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { readStore, upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
 import { listUserEmbeddings, upsertUserEmbedding } from '@/lib/rag/cloudStore'
@@ -67,7 +67,8 @@ export async function POST(request: Request) {
   }
 
   const session = await auth()
-  if (session?.user?.id) {
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  if (vaultMode === 'cloud' && session?.user?.id) {
     const adapter = await getAdapter(session.user.id)
     const notes = await adapter.listNotes(folder)
     const existing = new Map(
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
     return Response.json({ indexed, skipped, total: notes.length, errors, meta: { provider, model, updatedAt } })
   }
 
-  if (getVpsConfig()) return proxyToVps('/api/embeddings/index', 'POST', body)
+  if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/embeddings/index', 'POST', body)
 
   const vaultPath = getVaultPath()
   const adapter = await getAdapter()

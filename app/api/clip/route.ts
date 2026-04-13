@@ -1,5 +1,5 @@
 import { auth } from '@/auth'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { JSDOM } from 'jsdom'
 import { Readability } from '@mozilla/readability'
 import TurndownService from 'turndown'
@@ -37,6 +37,7 @@ function filenameFromUrl(url: string): string {
 export async function POST(request: Request) {
   const session = await auth()
   const userId = (session?.user as { id?: string } | undefined)?.id
+  const vaultMode = await getServerVaultMode(userId)
 
   let body: ClipRequestBody
   try {
@@ -138,7 +139,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const adapter = await getAdapter(userId)
+    const adapter = await getAdapter(vaultMode === 'cloud' ? userId : undefined)
     await adapter.ensureDirectories()
     await adapter.writeNote(notePath, content)
 

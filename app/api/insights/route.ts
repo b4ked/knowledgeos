@@ -1,5 +1,5 @@
 import { auth } from '@/auth'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { parseLinks } from '@/lib/graph/parseLinks'
 import { analyzeGraph } from '@/lib/graph/analyze'
 import { listUserEmbeddings } from '@/lib/rag/cloudStore'
@@ -18,14 +18,15 @@ import type { NoteInput } from '@/lib/graph/parseLinks'
  */
 export async function GET(request: Request) {
   const session = await auth()
-  if (!session?.user?.id && getVpsConfig()) return proxyToVps('/api/insights', 'GET')
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/insights', 'GET')
 
   const url = new URL(request.url)
   const mode = url.searchParams.get('mode') ?? 'graph'
   const query = url.searchParams.get('query') ?? ''
 
   try {
-    const adapter = await getAdapter(session?.user?.id ?? undefined)
+    const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
     await adapter.ensureDirectories()
 
     // Build graph data
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
 
     // If a query is provided, also return graph-aware retrieval
     let graphAwareResults = null
-    if (query.trim() && session?.user?.id) {
+    if (query.trim() && vaultMode === 'cloud' && session?.user?.id) {
       try {
         const embeddings = await listUserEmbeddings(session.user.id, 'wiki')
         if (embeddings.length > 0) {
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
 
     // Semantic cluster data: pairwise similarity matrix for top notes (if mode=semantic)
     let semanticClusters = null
-    if (mode === 'semantic' && session?.user?.id) {
+    if (mode === 'semantic' && vaultMode === 'cloud' && session?.user?.id) {
       try {
         const embeddings = await listUserEmbeddings(session.user.id, 'wiki')
         semanticClusters = computeSemanticClusters(embeddings)

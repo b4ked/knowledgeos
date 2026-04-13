@@ -5,7 +5,7 @@ import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { retrieveContext } from '@/lib/embeddings/retrieve'
 import { readMeta } from '@/lib/embeddings/store'
 import { listUserEmbeddings } from '@/lib/rag/cloudStore'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { LocalVaultAdapter } from '@/lib/vault/LocalVaultAdapter'
 import { cosineSimilarity } from '@/lib/embeddings/cosine'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
 
   try {
     const session = await auth()
+    const vaultMode = await getServerVaultMode(session?.user?.id)
 
     if (Array.isArray(notes) && notes.length > 0) {
       if (session?.user?.id) {
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
       return Response.json(result)
     }
 
-    if (session?.user?.id) {
+    if (vaultMode === 'cloud' && session?.user?.id) {
       try {
         const usage = await checkAndIncrementUsage(session.user.id, 'chat')
         if (!usage.allowed) {
@@ -161,7 +162,7 @@ export async function POST(request: Request) {
       return Response.json({ answer: result.answer, sources: result.sources })
     }
 
-    if (getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
+    if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
 
     const vaultPath = getVaultPath()
     const llm = getLLMProvider()

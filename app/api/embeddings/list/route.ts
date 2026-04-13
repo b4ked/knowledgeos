@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { readStore, readMeta } from '@/lib/embeddings/store'
 import { listUserEmbeddings, readUserEmbeddingMeta } from '@/lib/rag/cloudStore'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
+import { getServerVaultMode } from '@/lib/vault/getAdapter'
 import type { NoteFolder } from '@/lib/vault/VaultAdapter'
 
 function getVaultPath() {
@@ -13,8 +14,9 @@ export async function GET(request: Request) {
   const folderParam = new URL(request.url).searchParams.get('folder')
   const folder = folderParam === 'raw' || folderParam === 'wiki' ? folderParam : undefined
   const session = await auth()
+  const vaultMode = await getServerVaultMode(session?.user?.id)
 
-  if (session?.user?.id) {
+  if (vaultMode === 'cloud' && session?.user?.id) {
     const [entries, meta] = await Promise.all([
       listUserEmbeddings(session.user.id, folder as NoteFolder | undefined),
       readUserEmbeddingMeta(session.user.id, folder as NoteFolder | undefined),
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
     return Response.json({ slugs, meta })
   }
 
-  if (getVpsConfig()) return proxyToVps('/api/embeddings/list', 'GET')
+  if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/embeddings/list', 'GET')
   const vaultPath = getVaultPath()
   const [store, meta] = await Promise.all([readStore(vaultPath), readMeta(vaultPath)])
   const slugs = Object.keys(store).sort()

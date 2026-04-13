@@ -2,7 +2,7 @@ import { auth } from '@/auth'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { deleteUserEmbeddings, upsertUserEmbedding } from '@/lib/rag/cloudStore'
 import { hashContent } from '@/lib/rag/hash'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 
 export async function GET(
   request: Request,
@@ -17,7 +17,8 @@ export async function GET(
 
   const notePath = `${folder}/${slug}.md`
   const session = await auth()
-  const adapter = await getAdapter(session?.user?.id ?? undefined)
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
 
   try {
     const content = await adapter.readNote(notePath)
@@ -44,10 +45,11 @@ export async function PUT(
 
   const notePath = `${folder}/${slug}.md`
   const session = await auth()
-  const adapter = await getAdapter(session?.user?.id ?? undefined)
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
   await adapter.writeNote(notePath, body.content)
 
-  if (session?.user?.id && folder === 'wiki' && body.content.trim()) {
+  if (vaultMode === 'cloud' && session?.user?.id && folder === 'wiki' && body.content.trim()) {
     const llm = getLLMProvider()
     const provider = process.env.LLM_PROVIDER ?? 'anthropic'
     const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
@@ -88,11 +90,12 @@ export async function DELETE(
 
   const notePath = `${folder}/${slug}.md`
   const session = await auth()
-  const adapter = await getAdapter(session?.user?.id ?? undefined)
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
 
   try {
     await adapter.deleteNote(notePath)
-    if (session?.user?.id && folder === 'wiki') {
+    if (vaultMode === 'cloud' && session?.user?.id && folder === 'wiki') {
       await deleteUserEmbeddings(session.user.id, { folder: 'wiki', slug })
     }
     return new Response(null, { status: 204 })

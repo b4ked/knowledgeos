@@ -2,7 +2,7 @@ import path from 'path'
 import { auth } from '@/auth'
 import { compile } from '@/lib/compiler/compile'
 import { readSettings } from '@/lib/vault/settings'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import type { Conventions } from '@/lib/conventions/types'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
 
   const session = await auth()
   const userId = session?.user?.id ?? undefined
+  const vaultMode = await getServerVaultMode(userId)
   const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
   const llm = getLLMProvider(conventions ?? {})
 
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
   }
 
   // Cloud mode: use the database-backed adapter for authenticated users
-  if (userId) {
+  if (vaultMode === 'cloud' && userId) {
     try {
       const usage = await checkAndIncrementUsage(userId, 'compile')
       if (!usage.allowed) {
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
+  if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/compile', 'POST', body)
 
   // Local/remote mode: use filesystem-based compile
   const vaultPath = process.env.VAULT_PATH

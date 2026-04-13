@@ -1,11 +1,14 @@
 import path from 'path'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { auth } from '@/auth'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 
 export async function POST() {
-  if (getVpsConfig()) return proxyToVps('/api/embeddings/reindex', 'POST')
+  const session = await auth()
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/embeddings/reindex', 'POST')
   const vaultPath = process.env.VAULT_PATH
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')

@@ -1,10 +1,11 @@
 import { auth } from '@/auth'
-import { getAdapter } from '@/lib/vault/getAdapter'
+import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 
 export async function GET() {
   const session = await auth()
-  const adapter = await getAdapter(session?.user?.id ?? undefined)
+  const vaultMode = await getServerVaultMode(session?.user?.id)
+  const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)
   await adapter.ensureDirectories()
 
   const [wikiMeta, rawMeta] = await Promise.all([
