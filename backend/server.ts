@@ -407,9 +407,10 @@ function buildUploadSlug(filename: string): string {
 
 async function extractMarkdownFromFile(filePath: string): Promise<{ ok: boolean; markdown?: string; error?: string }> {
   const scriptPath = path.resolve(__dirname, 'scripts/markitdown_extract.py')
+  const pythonCmd = process.env.MARKITDOWN_PYTHON?.trim() || 'python3'
 
   try {
-    const { stdout } = await execFileAsync('python3', [scriptPath, filePath], {
+    const { stdout } = await execFileAsync(pythonCmd, [scriptPath, filePath], {
       timeout: 60000,
       maxBuffer: 5 * 1024 * 1024,
     })
