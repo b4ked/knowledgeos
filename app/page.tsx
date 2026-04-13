@@ -47,6 +47,8 @@ type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
 type Tag = { name: string; count: number }
 type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
+const PUBLIC_UPLOAD_URL = process.env.NEXT_PUBLIC_VPS_UPLOAD_URL?.trim() || 'https://api.parrytech.co/knos/api/upload-public'
+
 type ImportedFileResult = {
   clientId: string
   filename: string
@@ -947,12 +949,6 @@ export default function Home() {
     setSharedImportPreset('default')
 
     try {
-      const uploadUrlRes = await fetch('/api/upload')
-      const uploadUrlData = await uploadUrlRes.json() as { uploadUrl?: string; error?: string }
-      if (!uploadUrlRes.ok || !uploadUrlData.uploadUrl) {
-        throw new Error(uploadUrlData.error ?? 'Could not prepare file upload')
-      }
-
       const uploadedResults: Array<{
         filename: string
         ok: boolean
@@ -964,7 +960,7 @@ export default function Home() {
 
       for (const file of droppedFiles) {
         const arrayBuffer = await file.arrayBuffer()
-        const res = await fetch(uploadUrlData.uploadUrl, {
+        const res = await fetch(PUBLIC_UPLOAD_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
