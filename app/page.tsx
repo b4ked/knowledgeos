@@ -107,7 +107,7 @@ export default function Home() {
   const [importFiles, setImportFiles] = useState<ImportedFileResult[]>([])
   const [showImportModal, setShowImportModal] = useState(false)
   const [sameImportPreset, setSameImportPreset] = useState(true)
-  const [sharedImportPreset, setSharedImportPreset] = useState('default')
+  const [sharedImportPreset, setSharedImportPreset] = useState('document')
   const [importCompileError, setImportCompileError] = useState<string | null>(null)
   const sidebarDragCounter = useRef(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
@@ -946,7 +946,7 @@ export default function Home() {
     setUploading(true)
     setImportCompileError(null)
     setSameImportPreset(true)
-    setSharedImportPreset('default')
+    setSharedImportPreset('document')
 
     try {
       const uploadedResults: Array<{
@@ -997,7 +997,7 @@ export default function Home() {
             filename: result.filename,
             status: 'error',
             error: result.error ?? 'Could not extract text from this file.',
-            preset: 'default',
+            preset: 'document',
           })
           continue
         }
@@ -1016,7 +1016,7 @@ export default function Home() {
             rawNote: created.rawNote,
             rawContent: created.rawContent,
             mimeType: result.mimeType,
-            preset: 'default',
+            preset: 'document',
           })
         } catch (err) {
           nextFiles.push({
@@ -1024,7 +1024,7 @@ export default function Home() {
             filename: result.filename,
             status: 'error',
             error: err instanceof Error ? err.message : 'Could not save this file to the current vault.',
-            preset: 'default',
+            preset: 'document',
           })
         }
       }
@@ -1070,10 +1070,12 @@ export default function Home() {
           ? {
               notePaths: [file.rawNote!.path],
               sources: [file.rawContent ?? ''],
+              outputFilename: file.rawNote!.slug,
               conventions: presetCache.get(preset),
             }
           : {
               notePaths: [file.rawNote!.path],
+              outputFilename: file.rawNote!.slug,
               conventions: presetCache.get(preset),
             }
 

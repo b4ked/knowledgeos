@@ -135,16 +135,26 @@ export async function POST(request: Request) {
 }
 
 function generateSlugFromOutput(notePaths: string[], output?: string): string {
+  const genericTitles = new Set([
+    'overview',
+    'summary',
+    'notes',
+    'note',
+    'document',
+    'untitled',
+    'introduction',
+  ])
+
   if (output) {
-    const headingMatch = output.match(/^#{1,3}\s+(.+)$/m)
-    if (headingMatch) {
+    const headingMatches = output.matchAll(/^#{1,3}\s+(.+)$/gm)
+    for (const headingMatch of headingMatches) {
       const slug = headingMatch[1]
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 80)
-      if (slug) return slug
+      if (slug && !genericTitles.has(slug)) return slug
     }
   }
   const base = path.basename(notePaths[0], '.md').replace(/[_\-]?temp[_\-]\d+/i, '').replace(/^[-_]|[-_]$/g, '') || 'note'
