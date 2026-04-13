@@ -4,6 +4,12 @@ import path from 'path'
 import express from 'express'
 import cors from 'cors'
 import fs from 'fs/promises'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import os from 'os'
+import { randomUUID } from 'crypto'
+
+const execAsync = promisify(exec)
 
 import { bearerAuth } from './middleware/auth.js'
 import { LocalVaultAdapter } from '../lib/vault/LocalVaultAdapter.js'
@@ -32,7 +38,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
-app.use(express.json())
+// Increased limit for base64-encoded file uploads (50 MB file ≈ 68 MB base64)
+app.use(express.json({ limit: '100mb' }))
 
 // Health check — public, no auth required
 app.get('/health', (_req, res) => {
@@ -375,6 +382,111 @@ app.delete('/api/presets/:name', async (req, res) => {
     res.status(204).send()
   } catch {
     res.status(404).json({ error: `Preset not found: ${name}` })
+  }
+})
+
+// ── File import via markitdown ────────────────────────────────────────────────
+
+const ALLOWED_UPLOAD_EXT = new Set([
+  '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff',
+  '.txt', '.md', '.html', '.htm', '.csv',
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.odt', '.ods', '.odp', '.rtf', '.xml',
+])
+
+app.post('/api/upload', async (req, res) => {
+  const { filename, content: base64Content, mimeType } = req.body as {
+    filename?: string
+    content?: string
+    mimeType?: string
+  }
+
+  if (!filename || !base64Content) {
+    res.status(400).json({ error: 'filename and content are required' }); return
+  }
+
+  const safeExt = path.extname(filename).toLowerCase()
+  if (!ALLOWED_UPLOAD_EXT.has(safeExt)) {
+    res.status(400).json({ error: `Unsupported file type: ${safeExt}` }); return
+  }
+
+  const tmpPath = path.join(os.tmpdir(), `kos-upload-${randomUUID()}${safeExt}`)
+
+  try {
+    await fs.writeFile(tmpPath, Buffer.from(base64Content, 'base64'))
+
+    // Extract markdown using markitdown (Microsoft).
+    // Tries the CLI first, then python3 -m markitdown, then falls back for plain text.
+    let markdown = ''
+    const markitdownCmd = process.env.MARKITDOWN_CMD ?? 'markitdown'
+
+    try {
+      const { stdout } = await execAsync(`${markitdownCmd} "${tmpPath}"`, { timeout: 60000 })
+      markdown = stdout.trim()
+    } catch {
+      try {
+        const { stdout } = await execAsync(`python3 -m markitdown "${tmpPath}"`, { timeout: 60000 })
+        markdown = stdout.trim()
+      } catch (err2) {
+        // For plain text / markdown files, read directly without conversion
+        if (['.txt', '.md', '.csv'].includes(safeExt)) {
+          markdown = Buffer.from(base64Content, 'base64').toString('utf-8')
+        } else {
+          res.status(500).json({
+            error: `markitdown conversion failed. Install with: pip install markitdown\n${(err2 as Error).message}`,
+          })
+          return
+        }
+      }
+    }
+
+    if (!markdown.trim()) {
+      res.status(422).json({ error: 'No content could be extracted from the file' }); return
+    }
+
+    // Build slug from original filename
+    const baseSlug = path.basename(filename, safeExt)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80) || 'imported-file'
+
+    const adapter = await getAdapter()
+    await adapter.ensureDirectories()
+
+    // Write raw note
+    const rawNotePath = `raw/${baseSlug}.md`
+    const displayTitle = path.basename(filename, safeExt)
+    const rawContent = `# ${displayTitle}\n\n*Imported from: ${filename} (${mimeType ?? 'unknown type'})*\n\n---\n\n${markdown}`
+    await adapter.writeNote(rawNotePath, rawContent)
+
+    // Auto-compile to wiki
+    const vaultPath = getVaultPath()
+    const settings = await readSettings()
+    const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
+    const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
+
+    let wikiResult: Awaited<ReturnType<typeof compile>> | null = null
+    try {
+      wikiResult = await compile([rawNotePath], undefined, vaultPath, {}, rawPath, wikiPath)
+    } catch (compileErr) {
+      console.error('Auto-compile after upload failed (non-fatal):', (compileErr as Error).message)
+    }
+
+    res.json({
+      rawNote: {
+        slug: baseSlug,
+        folder: 'raw',
+        path: rawNotePath,
+        filename: `${baseSlug}.md`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      rawContent,
+      wikiResult,
+    })
+  } finally {
+    fs.unlink(tmpPath).catch(() => {})
   }
 })
 
