@@ -40,12 +40,22 @@ import FrontmatterPanel from '@/components/FrontmatterPanel'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 import InsightsPanel from '@/components/InsightsPanel'
 import GraphQueryBar from '@/components/GraphQueryBar'
+import FileImportModal, { type FileImportItem } from '@/components/FileImportModal'
 import type { QueryInsights } from '@/components/GraphQueryBar'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
 type Tag = { name: string; count: number }
 type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
+type ImportedFileResult = {
+  clientId: string
+  filename: string
+  status: 'ready' | 'error'
+  error?: string
+  rawNote?: NoteMetadata
+  rawContent?: string
+  preset: string
+}
 
 export default function Home() {
   const [folder, setFolder] = useState<Folder>('wiki')
@@ -90,6 +100,12 @@ export default function Home() {
   const [chatWidth, setChatWidth] = useState(320)
   const [sidebarDragging, setSidebarDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [importCompiling, setImportCompiling] = useState(false)
+  const [importFiles, setImportFiles] = useState<ImportedFileResult[]>([])
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [sameImportPreset, setSameImportPreset] = useState(true)
+  const [sharedImportPreset, setSharedImportPreset] = useState('default')
+  const [importCompileError, setImportCompileError] = useState<string | null>(null)
   const sidebarDragCounter = useRef(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
   const graphDataRef = useRef<GraphData>({ nodes: [], edges: [] })
@@ -102,6 +118,37 @@ export default function Home() {
   const resizeStartWidthSidebar = useRef(256)
   const { toasts, addToast, removeToast } = useToast()
   const { status: sessionStatus } = useSession()
+  const presetOptions = [...Object.keys(BUILT_IN_PRESETS), ...sidebarPresets]
+
+  const resetVaultUi = useCallback((nextFolder: Folder = 'wiki') => {
+    loadGraphVersion.current += 1
+    setFolder(nextFolder)
+    setNotes([])
+    setSelectedNote(null)
+    setNoteContent('')
+    setPanel('viewer')
+    setCheckedSlugs(new Set())
+    setCompileError(null)
+    setQueryInsights(null)
+    setHighlightedSlugs(new Set())
+    setGraphData({ nodes: [], edges: [] })
+    graphDataRef.current = { nodes: [], edges: [] }
+    setNoteTags({})
+    setLocalTags([])
+    setActiveTag(null)
+    setShowImportModal(false)
+    setImportFiles([])
+    setImportCompileError(null)
+    setSidebarDragging(false)
+    sidebarDragCounter.current = 0
+  }, [])
+
+  const resolvePresetConventions = useCallback(async (preset: string): Promise<Record<string, unknown>> => {
+    if (BUILT_IN_PRESETS[preset]) return BUILT_IN_PRESETS[preset]
+    const res = await fetch(`/api/presets/${encodeURIComponent(preset)}`)
+    if (!res.ok) throw new Error(`Preset not found: ${preset}`)
+    return await res.json() as Record<string, unknown>
+  }, [])
 
   async function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
     let nextAdapter = browserAdapterRef.current
@@ -118,6 +165,7 @@ export default function Home() {
       browserAdapterRef.current = adapter
     }
 
+    resetVaultUi('wiki')
     setVaultMode(mode)
     setLocalHandleMissing(mode === 'local' && !nextAdapter)
 
@@ -221,7 +269,7 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [sessionStatus])
+  }, [sessionStatus, resetVaultUi])
 
   const syncLocalRagNote = useCallback(async (slug: string, content: string) => {
     if (vaultMode !== 'local' || !content.trim()) return
@@ -537,13 +585,8 @@ export default function Home() {
 
     browserAdapterRef.current = null
     setLocalHandleMissing(false)
+    resetVaultUi('wiki')
     setVaultMode('remote')
-    setFolder('wiki')
-    setNotes([])
-    setSelectedNote(null)
-    setNoteContent('')
-    setCheckedSlugs(new Set())
-    setCompileError(null)
   }, [sessionStatus])
 
   useEffect(() => {
@@ -807,6 +850,165 @@ export default function Home() {
       setCompileError('Network error — could not compile')
     } finally {
       setCompiling(false)
+    }
+  }
+
+  async function handleDroppedFiles(fileList: FileList | File[]) {
+    const droppedFiles = Array.from(fileList)
+
+    setSidebarDragging(false)
+    sidebarDragCounter.current = 0
+
+    if (vaultMode !== 'remote') {
+      addToast('Switch to Demo vault to import files through the VPS.', 'info')
+      return
+    }
+    if (droppedFiles.length === 0) return
+    if (droppedFiles.length > 10) {
+      addToast('Drag and drop up to 10 files at a time.', 'error')
+      return
+    }
+
+    setUploading(true)
+    setImportCompileError(null)
+    setSameImportPreset(true)
+    setSharedImportPreset('default')
+
+    try {
+      const formData = new FormData()
+      for (const file of droppedFiles) formData.append('files', file)
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json() as {
+        results?: Array<{
+          filename: string
+          ok: boolean
+          error?: string
+          rawNote?: NoteMetadata
+          rawContent?: string
+        }>
+        error?: string
+      }
+
+      if (!res.ok || !Array.isArray(data.results)) {
+        throw new Error(data.error ?? 'Could not upload files')
+      }
+
+      const nextFiles: ImportedFileResult[] = data.results.map((result, index) => ({
+        clientId: `${Date.now()}-${index}-${result.filename}`,
+        filename: result.filename,
+        status: result.ok ? 'ready' : 'error',
+        error: result.error,
+        rawNote: result.rawNote,
+        rawContent: result.rawContent,
+        preset: 'default',
+      }))
+
+      setImportFiles(nextFiles)
+      setShowImportModal(true)
+      setFolder('raw')
+      setSelectedNote(null)
+      setNoteContent('')
+      await loadNotes('raw')
+      await loadGraph()
+
+      const okCount = nextFiles.filter((item) => item.status === 'ready').length
+      const errorCount = nextFiles.length - okCount
+      if (okCount > 0) addToast(`Imported ${okCount} raw file${okCount !== 1 ? 's' : ''}`, 'success')
+      if (errorCount > 0) addToast(`${errorCount} file${errorCount !== 1 ? 's' : ''} could not be converted`, 'error')
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Could not upload files', 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleCompileImportedFiles() {
+    const readyFiles = importFiles.filter((file) => file.status === 'ready' && file.rawNote)
+    if (readyFiles.length === 0) return
+
+    setImportCompiling(true)
+    setImportCompileError(null)
+
+    try {
+      const presetCache = new Map<string, Record<string, unknown>>()
+      const compiled: Array<{ file: ImportedFileResult; output: string; slug: string; outputPath: string }> = []
+      const failures: string[] = []
+
+      for (const file of readyFiles) {
+        const preset = sameImportPreset ? sharedImportPreset : file.preset
+        if (!presetCache.has(preset)) {
+          presetCache.set(preset, await resolvePresetConventions(preset))
+        }
+
+        const res = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            notePaths: [file.rawNote!.path],
+            conventions: presetCache.get(preset),
+          }),
+        })
+        const data = await res.json() as { slug?: string; output?: string; outputPath?: string; error?: string }
+        if (!res.ok || !data.slug || !data.output || !data.outputPath) {
+          failures.push(`${file.filename}: ${data.error ?? 'Compilation failed'}`)
+          continue
+        }
+
+        compiled.push({
+          file,
+          output: data.output,
+          slug: data.slug,
+          outputPath: data.outputPath,
+        })
+      }
+
+      if (compiled.length > 0) {
+        loadGraphVersion.current += 1
+        setFolder('wiki')
+        setNotes([])
+        setSelectedNote(null)
+        setNoteContent('')
+        setPanel('viewer')
+        setCheckedSlugs(new Set())
+        setCompileError(null)
+        setQueryInsights(null)
+        setHighlightedSlugs(new Set())
+        setGraphData({ nodes: [], edges: [] })
+        graphDataRef.current = { nodes: [], edges: [] }
+        setNoteTags({})
+        setLocalTags([])
+        setActiveTag(null)
+        await loadNotes('wiki')
+        await loadGraph()
+
+        const last = compiled[compiled.length - 1]
+        setShowGraph(false)
+        setSelectedNote({
+          slug: last.slug,
+          filename: `${last.slug}.md`,
+          folder: 'wiki',
+          path: last.outputPath as `wiki/${string}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(last.output)
+        addToast(`Compiled ${compiled.length} file${compiled.length !== 1 ? 's' : ''} into the wiki`, 'success')
+      }
+
+      if (failures.length > 0) {
+        setImportCompileError(failures.join(' | '))
+      } else {
+        setShowImportModal(false)
+        setImportFiles([])
+      }
+    } catch (err) {
+      setImportCompileError(err instanceof Error ? err.message : 'Could not compile imported files')
+    } finally {
+      setImportCompiling(false)
     }
   }
 
@@ -1096,8 +1298,31 @@ export default function Home() {
         {/* Sidebar */}
         {sidebarOpen && (
           <aside
-            className="bg-gray-900 border-r border-gray-800 flex flex-row shrink-0"
+            className={`bg-gray-900 border-r border-gray-800 flex flex-row shrink-0 transition-colors ${
+              sidebarDragging ? 'bg-blue-950/30' : ''
+            }`}
             style={{ width: sidebarWidth }}
+            onDragEnter={(event) => {
+              event.preventDefault()
+              if (vaultMode !== 'remote') return
+              sidebarDragCounter.current += 1
+              setSidebarDragging(true)
+            }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (vaultMode !== 'remote') return
+              event.dataTransfer.dropEffect = 'copy'
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault()
+              if (vaultMode !== 'remote') return
+              sidebarDragCounter.current = Math.max(0, sidebarDragCounter.current - 1)
+              if (sidebarDragCounter.current === 0) setSidebarDragging(false)
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              void handleDroppedFiles(event.dataTransfer.files)
+            }}
           >
           <div className="flex flex-col flex-1 min-w-0">
             <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
@@ -1125,6 +1350,17 @@ export default function Home() {
                   {f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
+            </div>
+
+            <div className={`px-3 py-2 border-b text-xs ${
+              vaultMode === 'remote'
+                ? 'border-blue-900/60 bg-blue-950/20 text-blue-200'
+                : 'border-gray-800 bg-gray-900 text-gray-500'
+            }`}>
+              <p>Drag and drop up to 10 files</p>
+              {vaultMode !== 'remote' && (
+                <p className="mt-1 text-[11px] text-gray-600">Switch to Demo vault to import through the VPS.</p>
+              )}
             </div>
 
             {showTags && (
@@ -1446,6 +1682,32 @@ export default function Home() {
           vaultMode={vaultMode}
           localGraphData={vaultMode === 'local' ? graphData : undefined}
           browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : undefined}
+        />
+      )}
+
+      {showImportModal && (
+        <FileImportModal
+          items={importFiles as FileImportItem[]}
+          presetOptions={presetOptions}
+          samePresetForAll={sameImportPreset}
+          sharedPreset={sharedImportPreset}
+          uploading={uploading}
+          compiling={importCompiling}
+          compileError={importCompileError}
+          onClose={() => {
+            if (uploading || importCompiling) return
+            setShowImportModal(false)
+            setImportFiles([])
+            setImportCompileError(null)
+          }}
+          onCompile={() => { void handleCompileImportedFiles() }}
+          onSamePresetChange={setSameImportPreset}
+          onSharedPresetChange={setSharedImportPreset}
+          onItemPresetChange={(clientId, preset) => {
+            setImportFiles((prev) => prev.map((item) => (
+              item.clientId === clientId ? { ...item, preset } : item
+            )))
+          }}
         />
       )}
 

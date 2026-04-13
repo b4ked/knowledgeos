@@ -4,12 +4,12 @@ import path from 'path'
 import express from 'express'
 import cors from 'cors'
 import fs from 'fs/promises'
-import { exec } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import os from 'os'
 import { randomUUID } from 'crypto'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 import { bearerAuth } from './middleware/auth.js'
 import { LocalVaultAdapter } from '../lib/vault/LocalVaultAdapter.js'
@@ -389,105 +389,144 @@ app.delete('/api/presets/:name', async (req, res) => {
 
 const ALLOWED_UPLOAD_EXT = new Set([
   '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff',
-  '.txt', '.md', '.html', '.htm', '.csv',
+  '.txt', '.md', '.markdown', '.html', '.htm', '.csv',
   '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.odt', '.ods', '.odp', '.rtf', '.xml',
+  '.odt', '.ods', '.odp', '.rtf', '.xml', '.json',
 ])
 
+function buildUploadSlug(filename: string): string {
+  const ext = path.extname(filename)
+  return (
+    path.basename(filename, ext)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80) || 'imported-file'
+  )
+}
+
+async function extractMarkdownFromFile(filePath: string): Promise<{ ok: boolean; markdown?: string; error?: string }> {
+  const scriptPath = path.resolve(__dirname, 'scripts/markitdown_extract.py')
+
+  try {
+    const { stdout } = await execFileAsync('python3', [scriptPath, filePath], {
+      timeout: 60000,
+      maxBuffer: 5 * 1024 * 1024,
+    })
+    const parsed = JSON.parse(stdout.trim()) as { ok?: boolean; markdown?: string; error?: string }
+    if (!parsed.ok || !parsed.markdown) {
+      return { ok: false, error: parsed.error ?? 'Could not extract text from this file.' }
+    }
+    return { ok: true, markdown: parsed.markdown }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Could not extract text from this file.',
+    }
+  }
+}
+
 app.post('/api/upload', async (req, res) => {
-  const { filename, content: base64Content, mimeType } = req.body as {
+  const body = req.body as {
+    files?: Array<{ filename?: string; content?: string; mimeType?: string }>
     filename?: string
     content?: string
     mimeType?: string
   }
 
-  if (!filename || !base64Content) {
-    res.status(400).json({ error: 'filename and content are required' }); return
+  const files = Array.isArray(body.files)
+    ? body.files
+    : body.filename && body.content
+      ? [{ filename: body.filename, content: body.content, mimeType: body.mimeType }]
+      : []
+
+  if (files.length === 0) {
+    res.status(400).json({ error: 'files must be a non-empty array' }); return
+  }
+  if (files.length > 10) {
+    res.status(400).json({ error: 'Upload up to 10 files at a time.' }); return
   }
 
-  const safeExt = path.extname(filename).toLowerCase()
-  if (!ALLOWED_UPLOAD_EXT.has(safeExt)) {
-    res.status(400).json({ error: `Unsupported file type: ${safeExt}` }); return
-  }
+  const adapter = await getAdapter()
+  await adapter.ensureDirectories()
+  const existingRawSlugs = new Set((await adapter.listNotes('raw')).map((note) => note.slug))
+  const results: Array<{
+    filename: string
+    ok: boolean
+    error?: string
+    rawNote?: {
+      slug: string
+      folder: 'raw'
+      path: `raw/${string}.md`
+      filename: string
+      createdAt: string
+      updatedAt: string
+    }
+    rawContent?: string
+  }> = []
 
-  const tmpPath = path.join(os.tmpdir(), `kos-upload-${randomUUID()}${safeExt}`)
+  for (const file of files) {
+    const filename = file.filename?.trim() || 'upload'
+    const base64Content = file.content
+    const mimeType = file.mimeType
+    const safeExt = path.extname(filename).toLowerCase()
 
-  try {
-    await fs.writeFile(tmpPath, Buffer.from(base64Content, 'base64'))
+    if (!base64Content) {
+      results.push({ filename, ok: false, error: 'Missing file content.' })
+      continue
+    }
+    if (!ALLOWED_UPLOAD_EXT.has(safeExt)) {
+      results.push({ filename, ok: false, error: `Unsupported file type: ${safeExt || '(none)'}` })
+      continue
+    }
 
-    // Extract markdown using markitdown (Microsoft).
-    // Tries the CLI first, then python3 -m markitdown, then falls back for plain text.
-    let markdown = ''
-    const markitdownCmd = process.env.MARKITDOWN_CMD ?? 'markitdown'
+    const tmpPath = path.join(os.tmpdir(), `kos-upload-${randomUUID()}${safeExt}`)
 
     try {
-      const { stdout } = await execAsync(`${markitdownCmd} "${tmpPath}"`, { timeout: 60000 })
-      markdown = stdout.trim()
-    } catch {
-      try {
-        const { stdout } = await execAsync(`python3 -m markitdown "${tmpPath}"`, { timeout: 60000 })
-        markdown = stdout.trim()
-      } catch (err2) {
-        // For plain text / markdown files, read directly without conversion
-        if (['.txt', '.md', '.csv'].includes(safeExt)) {
-          markdown = Buffer.from(base64Content, 'base64').toString('utf-8')
-        } else {
-          res.status(500).json({
-            error: `markitdown conversion failed. Install with: pip install markitdown\n${(err2 as Error).message}`,
-          })
-          return
-        }
+      await fs.writeFile(tmpPath, Buffer.from(base64Content, 'base64'))
+      const extracted = await extractMarkdownFromFile(tmpPath)
+      if (!extracted.ok || !extracted.markdown?.trim()) {
+        results.push({
+          filename,
+          ok: false,
+          error: extracted.error ?? 'No text could be extracted from this file.',
+        })
+        continue
       }
+
+      const baseSlug = buildUploadSlug(filename)
+      let slug = baseSlug
+      let counter = 2
+      while (existingRawSlugs.has(slug)) {
+        slug = `${baseSlug}-${counter}`
+        counter++
+      }
+      existingRawSlugs.add(slug)
+
+      const rawNotePath = `raw/${slug}.md` as const
+      const displayTitle = path.basename(filename, safeExt) || 'Imported file'
+      const rawContent = `# ${displayTitle}\n\n*Imported from: ${filename} (${mimeType ?? 'unknown type'})*\n\n---\n\n${extracted.markdown}`
+      await adapter.writeNote(rawNotePath, rawContent)
+
+      results.push({
+        filename,
+        ok: true,
+        rawNote: {
+          slug,
+          folder: 'raw',
+          path: rawNotePath,
+          filename: `${slug}.md`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        rawContent,
+      })
+    } finally {
+      fs.unlink(tmpPath).catch(() => {})
     }
-
-    if (!markdown.trim()) {
-      res.status(422).json({ error: 'No content could be extracted from the file' }); return
-    }
-
-    // Build slug from original filename
-    const baseSlug = path.basename(filename, safeExt)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 80) || 'imported-file'
-
-    const adapter = await getAdapter()
-    await adapter.ensureDirectories()
-
-    // Write raw note
-    const rawNotePath = `raw/${baseSlug}.md`
-    const displayTitle = path.basename(filename, safeExt)
-    const rawContent = `# ${displayTitle}\n\n*Imported from: ${filename} (${mimeType ?? 'unknown type'})*\n\n---\n\n${markdown}`
-    await adapter.writeNote(rawNotePath, rawContent)
-
-    // Auto-compile to wiki
-    const vaultPath = getVaultPath()
-    const settings = await readSettings()
-    const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
-    const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
-
-    let wikiResult: Awaited<ReturnType<typeof compile>> | null = null
-    try {
-      wikiResult = await compile([rawNotePath], undefined, vaultPath, {}, rawPath, wikiPath)
-    } catch (compileErr) {
-      console.error('Auto-compile after upload failed (non-fatal):', (compileErr as Error).message)
-    }
-
-    res.json({
-      rawNote: {
-        slug: baseSlug,
-        folder: 'raw',
-        path: rawNotePath,
-        filename: `${baseSlug}.md`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      rawContent,
-      wikiResult,
-    })
-  } finally {
-    fs.unlink(tmpPath).catch(() => {})
   }
+
+  res.json({ results })
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────
