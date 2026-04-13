@@ -46,8 +46,6 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, vault: getVaultPath() })
 })
 
-app.use(bearerAuth)
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getVaultPath(): string {
@@ -427,7 +425,7 @@ async function extractMarkdownFromFile(filePath: string): Promise<{ ok: boolean;
   }
 }
 
-app.post('/api/upload', async (req, res) => {
+async function handleUploadRequest(req: express.Request, res: express.Response) {
   const body = req.body as {
     files?: Array<{ filename?: string; content?: string; mimeType?: string }>
     filename?: string
@@ -499,7 +497,13 @@ app.post('/api/upload', async (req, res) => {
   }
 
   res.json({ results })
-})
+}
+
+app.post('/api/upload-public', handleUploadRequest)
+
+app.use(bearerAuth)
+
+app.post('/api/upload', handleUploadRequest)
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

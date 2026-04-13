@@ -947,6 +947,12 @@ export default function Home() {
     setSharedImportPreset('default')
 
     try {
+      const uploadUrlRes = await fetch('/api/upload')
+      const uploadUrlData = await uploadUrlRes.json() as { uploadUrl?: string; error?: string }
+      if (!uploadUrlRes.ok || !uploadUrlData.uploadUrl) {
+        throw new Error(uploadUrlData.error ?? 'Could not prepare file upload')
+      }
+
       const uploadedResults: Array<{
         filename: string
         ok: boolean
@@ -958,7 +964,7 @@ export default function Home() {
 
       for (const file of droppedFiles) {
         const arrayBuffer = await file.arrayBuffer()
-        const res = await fetch('/api/upload', {
+        const res = await fetch(uploadUrlData.uploadUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

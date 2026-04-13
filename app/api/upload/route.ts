@@ -41,6 +41,14 @@ async function readPayload(request: Request): Promise<File[] | Array<{ filename:
   return files
 }
 
+export async function GET() {
+  const vps = getAnyVpsConfig()
+  if (!vps) {
+    return Response.json({ error: 'VPS extraction is not configured.' }, { status: 501 })
+  }
+  return Response.json({ uploadUrl: `${vps.baseUrl}/api/upload-public` })
+}
+
 export async function POST(request: Request) {
   const files = await readPayload(request)
 
