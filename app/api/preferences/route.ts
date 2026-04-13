@@ -15,7 +15,7 @@ export async function GET() {
   })
 
   return NextResponse.json({
-    vaultMode: prefs?.vaultMode ?? "cloud",
+    vaultMode: prefs?.vaultMode ?? "remote",
     llmProvider: prefs?.llmProvider ?? "openai",
   })
 }
@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest) {
   } else {
     await db.insert(userPreferences).values({
       userId,
-      vaultMode: body.vaultMode ?? "cloud",
+      vaultMode: body.vaultMode ?? "remote",
       llmProvider: body.llmProvider ?? "openai",
     })
   }

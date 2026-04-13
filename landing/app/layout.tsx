@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     description:
       'Turn scattered research into a structured, queryable intelligence system. AI-compiled wiki notes, knowledge graph, and chat — powered by your own sources.',
     type: 'website',
-    url: 'https://knowledgeos.app',
+    url: 'https://knoswmba.parrytech.co',
   },
   twitter: {
     card: 'summary_large_image',

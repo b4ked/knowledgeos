@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSession } from 'next-auth/react'
 import type { NoteFolder, NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
 import FolderTree from '@/components/FolderTree'
@@ -100,6 +101,7 @@ export default function Home() {
   const resizeStartXSidebar = useRef(0)
   const resizeStartWidthSidebar = useRef(256)
   const { toasts, addToast, removeToast } = useToast()
+  const { status: sessionStatus } = useSession()
 
   async function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
     let nextAdapter = browserAdapterRef.current
@@ -133,7 +135,7 @@ export default function Home() {
       }
     }
     // Persist preference for authenticated users
-    if (mode === 'cloud' || mode === 'local') {
+    if (sessionStatus === 'authenticated') {
       fetch('/api/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -144,47 +146,51 @@ export default function Home() {
 
   // Load vault mode preference for authenticated users
   useEffect(() => {
+    if (sessionStatus === 'loading') return
+
     let cancelled = false
 
     async function loadInitialVaultMode() {
       let nextMode: VaultMode = 'remote'
 
-      try {
-        const active = window.localStorage.getItem('knowledgeos.activeVaultMode')
-        if (active === 'cloud' || active === 'local' || active === 'remote') {
-          nextMode = active
-        }
-      } catch {
-        // Ignore storage failures
-      }
-
-      try {
-        const pending = window.localStorage.getItem('knowledgeos.pendingVaultMode')
-        if (pending === 'cloud' || pending === 'local') {
-          nextMode = pending
-          window.localStorage.removeItem('knowledgeos.pendingVaultMode')
-          window.localStorage.setItem('knowledgeos.activeVaultMode', pending)
-          fetch('/api/preferences', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vaultMode: pending }),
-          }).catch(() => { /* ignore until authenticated */ })
-        }
-      } catch {
-        // Ignore storage failures
-      }
-
-      if (nextMode === 'remote') {
+      if (sessionStatus === 'authenticated') {
         try {
-          const response = await fetch('/api/preferences')
-          if (response.ok) {
-            const prefs = await response.json() as { vaultMode?: string }
-            if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
-              nextMode = prefs.vaultMode
-            }
+          const active = window.localStorage.getItem('knowledgeos.activeVaultMode')
+          if (active === 'cloud' || active === 'local' || active === 'remote') {
+            nextMode = active
           }
         } catch {
-          // Keep remote default for anonymous/demo usage
+          // Ignore storage failures
+        }
+
+        try {
+          const pending = window.localStorage.getItem('knowledgeos.pendingVaultMode')
+          if (pending === 'cloud' || pending === 'local') {
+            nextMode = pending
+            window.localStorage.removeItem('knowledgeos.pendingVaultMode')
+            window.localStorage.setItem('knowledgeos.activeVaultMode', pending)
+            fetch('/api/preferences', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vaultMode: pending }),
+            }).catch(() => { /* ignore until authenticated */ })
+          }
+        } catch {
+          // Ignore storage failures
+        }
+
+        if (nextMode === 'remote') {
+          try {
+            const response = await fetch('/api/preferences')
+            if (response.ok) {
+              const prefs = await response.json() as { vaultMode?: string }
+              if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
+                nextMode = prefs.vaultMode
+              }
+            }
+          } catch {
+            // Keep remote default if preferences cannot be loaded
+          }
         }
       }
 
@@ -215,7 +221,7 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [sessionStatus])
 
   const syncLocalRagNote = useCallback(async (slug: string, content: string) => {
     if (vaultMode !== 'local' || !content.trim()) return
@@ -953,7 +959,7 @@ export default function Home() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 h-12 shrink-0">
         <a
-          href="https://knowledgeos.parrytech.co"
+          href="https://knoswmba.parrytech.co"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm font-semibold tracking-wide text-gray-100 hover:text-blue-300 transition-colors"
@@ -1514,7 +1520,7 @@ export default function Home() {
                 <p>All compiled notes are plain markdown with <span className="text-gray-300">[[wikilinks]]</span>. Open your vault in Obsidian at any time — no lock-in.</p>
               </div>
               <div className="pt-2 border-t border-gray-800">
-                <p className="text-gray-600">Daily limits apply based on your plan. Chats and compilations share a single combined limit. <a href="https://knowledgeos.parrytech.co#pricing" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400">View pricing →</a></p>
+                <p className="text-gray-600">Daily limits apply based on your plan. Chats and compilations share a single combined limit. <a href="https://knoswmba.parrytech.co#pricing" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-400">View pricing →</a></p>
               </div>
             </div>
           </div>

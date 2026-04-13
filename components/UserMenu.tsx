@@ -75,8 +75,24 @@ export default function UserMenu() {
             </Link>
             <div className="border-t border-gray-800 mt-1 pt-1">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setOpen(false)
+                  try {
+                    window.localStorage.setItem("knowledgeos.activeVaultMode", "remote")
+                    window.localStorage.removeItem("knowledgeos.pendingVaultMode")
+                  } catch {
+                    // Ignore storage failures during sign-out
+                  }
+                  try {
+                    await fetch("/api/preferences", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ vaultMode: "remote" }),
+                      keepalive: true,
+                    })
+                  } catch {
+                    // Ignore preference persistence failures during sign-out
+                  }
                   signOut({ callbackUrl: "/" })
                 }}
                 className="block w-full text-left px-3 py-2 text-xs text-gray-500 hover:text-gray-100 hover:bg-gray-800 transition-colors"

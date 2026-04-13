@@ -4,7 +4,7 @@ import Link from 'next/link'
 // Data
 // ---------------------------------------------------------------------------
 
-const APP_URL = 'https://knowledgeos.app'
+const APP_URL = 'https://knoswmba.parrytech.co'
 const PARRYTECH_URL = 'https://www.parrytech.co'
 const SIGNUP_URL = `${APP_URL}/signup`
 const LOGIN_URL = `${APP_URL}/login`
@@ -317,7 +317,7 @@ function Hero() {
                   <div className="w-3 h-3 rounded-full bg-gray-700" />
                   <div className="w-3 h-3 rounded-full bg-gray-700" />
                 </div>
-                <span className="text-xs text-gray-500 font-mono">knowledgeos.app</span>
+                <span className="text-xs text-gray-500 font-mono">knoswmba.parrytech.co</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-3 py-0.5 text-xs bg-blue-900/60 text-blue-300 rounded">Chat</span>
