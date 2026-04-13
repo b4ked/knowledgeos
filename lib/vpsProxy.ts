@@ -24,6 +24,10 @@ function resolveVpsBaseUrl(rawBaseUrl?: string | null): string | null {
 
 export function getVpsConfig(): { baseUrl: string; token: string } | null {
   if (process.env.VAULT_MODE !== 'remote') return null
+  return getAnyVpsConfig()
+}
+
+export function getAnyVpsConfig(): { baseUrl: string; token: string } | null {
   const baseUrl = resolveVpsBaseUrl(process.env.VPS_BASE_URL)
   const token = process.env.VPS_API_TOKEN
   if (!baseUrl || !token) return null

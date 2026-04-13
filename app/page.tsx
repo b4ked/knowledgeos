@@ -54,6 +54,7 @@ type ImportedFileResult = {
   error?: string
   rawNote?: NoteMetadata
   rawContent?: string
+  mimeType?: string
   preset: string
 }
 
@@ -149,6 +150,67 @@ export default function Home() {
     if (!res.ok) throw new Error(`Preset not found: ${preset}`)
     return await res.json() as Record<string, unknown>
   }, [])
+
+  const listVaultNotes = useCallback(async (targetFolder: Folder): Promise<NoteMetadata[]> => {
+    if (vaultMode === 'local') {
+      const adapter = browserAdapterRef.current
+      if (!adapter) throw new Error('Reconnect your local vault folder first')
+      return (await adapter.listNotes(targetFolder)).filter(
+        (note) => note.filename !== '.keep' && !note.slug.endsWith('/.keep') && note.slug !== '.keep'
+      )
+    }
+
+    const res = await fetch(`/api/notes?folder=${targetFolder}`)
+    if (!res.ok) throw new Error(`Could not load ${targetFolder} notes`)
+    return await res.json() as NoteMetadata[]
+  }, [vaultMode])
+
+  const writeImportedRawNote = useCallback(async (
+    filename: string,
+    mimeType: string | undefined,
+    markdown: string,
+    suggestedSlug: string,
+  ): Promise<{ rawNote: NoteMetadata; rawContent: string }> => {
+    const safeExt = `.${filename.split('.').pop() ?? ''}`.toLowerCase()
+    const displayTitle = safeExt === '.' ? filename : filename.slice(0, -safeExt.length) || filename
+    const existingRawNotes = await listVaultNotes('raw')
+    const existingSlugs = new Set(existingRawNotes.map((note) => note.slug))
+    let slug = suggestedSlug || 'imported-file'
+    let counter = 2
+    while (existingSlugs.has(slug)) {
+      slug = `${suggestedSlug || 'imported-file'}-${counter}`
+      counter++
+    }
+
+    const rawContent = `# ${displayTitle}\n\n*Imported from: ${filename} (${mimeType || 'unknown type'})*\n\n---\n\n${markdown}`
+    const rawPath = `raw/${slug}.md` as const
+
+    if (vaultMode === 'local') {
+      const adapter = browserAdapterRef.current
+      if (!adapter) throw new Error('Reconnect your local vault folder first')
+      await adapter.writeNote(rawPath, rawContent)
+      return {
+        rawNote: {
+          slug,
+          filename: `${slug}.md`,
+          folder: 'raw',
+          path: rawPath,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        rawContent,
+      }
+    }
+
+    const res = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: 'raw', filename: `${slug}.md`, content: rawContent }),
+    })
+    const data = await res.json() as NoteMetadata & { error?: string }
+    if (!res.ok) throw new Error(data.error ?? `Could not save ${filename} to the raw vault`)
+    return { rawNote: data, rawContent }
+  }, [listVaultNotes, vaultMode])
 
   async function handleVaultModeChange(mode: VaultMode, adapter?: BrowserVaultAdapter) {
     let nextAdapter = browserAdapterRef.current
@@ -862,10 +924,6 @@ export default function Home() {
     setSidebarDragging(false)
     sidebarDragCounter.current = 0
 
-    if (vaultMode !== 'remote') {
-      addToast('Switch to Demo vault to import files through the VPS.', 'info')
-      return
-    }
     if (droppedFiles.length === 0) return
     if (droppedFiles.length > 10) {
       addToast('Drag and drop up to 10 files at a time.', 'error')
@@ -890,8 +948,9 @@ export default function Home() {
           filename: string
           ok: boolean
           error?: string
-          rawNote?: NoteMetadata
-          rawContent?: string
+          markdown?: string
+          suggestedSlug?: string
+          mimeType?: string
         }>
         error?: string
       }
@@ -900,15 +959,46 @@ export default function Home() {
         throw new Error(data.error ?? 'Could not upload files')
       }
 
-      const nextFiles: ImportedFileResult[] = data.results.map((result, index) => ({
-        clientId: `${Date.now()}-${index}-${result.filename}`,
-        filename: result.filename,
-        status: result.ok ? 'ready' : 'error',
-        error: result.error,
-        rawNote: result.rawNote,
-        rawContent: result.rawContent,
-        preset: 'default',
-      }))
+      const nextFiles: ImportedFileResult[] = []
+      for (const [index, result] of data.results.entries()) {
+        const clientId = `${Date.now()}-${index}-${result.filename}`
+        if (!result.ok || !result.markdown?.trim()) {
+          nextFiles.push({
+            clientId,
+            filename: result.filename,
+            status: 'error',
+            error: result.error ?? 'Could not extract text from this file.',
+            preset: 'default',
+          })
+          continue
+        }
+
+        try {
+          const created = await writeImportedRawNote(
+            result.filename,
+            result.mimeType,
+            result.markdown,
+            result.suggestedSlug ?? 'imported-file',
+          )
+          nextFiles.push({
+            clientId,
+            filename: result.filename,
+            status: 'ready',
+            rawNote: created.rawNote,
+            rawContent: created.rawContent,
+            mimeType: result.mimeType,
+            preset: 'default',
+          })
+        } catch (err) {
+          nextFiles.push({
+            clientId,
+            filename: result.filename,
+            status: 'error',
+            error: err instanceof Error ? err.message : 'Could not save this file to the current vault.',
+            preset: 'default',
+          })
+        }
+      }
 
       setImportFiles(nextFiles)
       setShowImportModal(true)
@@ -947,18 +1037,36 @@ export default function Home() {
           presetCache.set(preset, await resolvePresetConventions(preset))
         }
 
+        const requestBody = vaultMode === 'local'
+          ? {
+              notePaths: [file.rawNote!.path],
+              sources: [file.rawContent ?? ''],
+              conventions: presetCache.get(preset),
+            }
+          : {
+              notePaths: [file.rawNote!.path],
+              conventions: presetCache.get(preset),
+            }
+
         const res = await fetch('/api/compile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            notePaths: [file.rawNote!.path],
-            conventions: presetCache.get(preset),
-          }),
+          body: JSON.stringify(requestBody),
         })
         const data = await res.json() as { slug?: string; output?: string; outputPath?: string; error?: string }
         if (!res.ok || !data.slug || !data.output || !data.outputPath) {
           failures.push(`${file.filename}: ${data.error ?? 'Compilation failed'}`)
           continue
+        }
+
+        if (vaultMode === 'local') {
+          const adapter = browserAdapterRef.current
+          if (!adapter) {
+            failures.push(`${file.filename}: reconnect your local vault folder first`)
+            continue
+          }
+          await adapter.writeNote(data.outputPath, data.output)
+          await syncLocalRagNote(data.slug, data.output).catch(() => {})
         }
 
         compiled.push({
@@ -1307,18 +1415,15 @@ export default function Home() {
             style={{ width: sidebarWidth }}
             onDragEnter={(event) => {
               event.preventDefault()
-              if (vaultMode !== 'remote') return
               sidebarDragCounter.current += 1
               setSidebarDragging(true)
             }}
             onDragOver={(event) => {
               event.preventDefault()
-              if (vaultMode !== 'remote') return
               event.dataTransfer.dropEffect = 'copy'
             }}
             onDragLeave={(event) => {
               event.preventDefault()
-              if (vaultMode !== 'remote') return
               sidebarDragCounter.current = Math.max(0, sidebarDragCounter.current - 1)
               if (sidebarDragCounter.current === 0) setSidebarDragging(false)
             }}
@@ -1356,14 +1461,12 @@ export default function Home() {
             </div>
 
             <div className={`px-3 py-2 border-b text-xs ${
-              vaultMode === 'remote'
-                ? 'border-blue-900/60 bg-blue-950/20 text-blue-200'
+              sidebarDragging
+                ? 'border-blue-900/60 bg-blue-950/30 text-blue-200'
                 : 'border-gray-800 bg-gray-900 text-gray-500'
             }`}>
               <p>Drag and drop up to 10 files</p>
-              {vaultMode !== 'remote' && (
-                <p className="mt-1 text-[11px] text-gray-600">Switch to Demo vault to import through the VPS.</p>
-              )}
+              <p className="mt-1 text-[11px] text-gray-600">Text is extracted on the VPS, then saved to your current vault.</p>
             </div>
 
             {showTags && (

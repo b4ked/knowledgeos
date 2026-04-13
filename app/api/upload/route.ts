@@ -1,4 +1,4 @@
-import { getVpsConfig } from '@/lib/vpsProxy'
+import { getAnyVpsConfig } from '@/lib/vpsProxy'
 
 export const maxDuration = 60
 
@@ -34,10 +34,10 @@ export async function POST(request: Request) {
     }
   }
 
-  const vps = getVpsConfig()
+  const vps = getAnyVpsConfig()
   if (!vps) {
     return Response.json(
-      { error: 'File import requires Demo vault mode so uploads can be processed on the VPS.' },
+      { error: 'File import requires VPS extraction to be configured on the server.' },
       { status: 501 },
     )
   }

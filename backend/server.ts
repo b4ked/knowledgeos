@@ -448,22 +448,13 @@ app.post('/api/upload', async (req, res) => {
     res.status(400).json({ error: 'Upload up to 10 files at a time.' }); return
   }
 
-  const adapter = await getAdapter()
-  await adapter.ensureDirectories()
-  const existingRawSlugs = new Set((await adapter.listNotes('raw')).map((note) => note.slug))
   const results: Array<{
     filename: string
     ok: boolean
     error?: string
-    rawNote?: {
-      slug: string
-      folder: 'raw'
-      path: `raw/${string}.md`
-      filename: string
-      createdAt: string
-      updatedAt: string
-    }
-    rawContent?: string
+    markdown?: string
+    suggestedSlug?: string
+    mimeType?: string
   }> = []
 
   for (const file of files) {
@@ -495,32 +486,12 @@ app.post('/api/upload', async (req, res) => {
         continue
       }
 
-      const baseSlug = buildUploadSlug(filename)
-      let slug = baseSlug
-      let counter = 2
-      while (existingRawSlugs.has(slug)) {
-        slug = `${baseSlug}-${counter}`
-        counter++
-      }
-      existingRawSlugs.add(slug)
-
-      const rawNotePath = `raw/${slug}.md` as const
-      const displayTitle = path.basename(filename, safeExt) || 'Imported file'
-      const rawContent = `# ${displayTitle}\n\n*Imported from: ${filename} (${mimeType ?? 'unknown type'})*\n\n---\n\n${extracted.markdown}`
-      await adapter.writeNote(rawNotePath, rawContent)
-
       results.push({
         filename,
         ok: true,
-        rawNote: {
-          slug,
-          folder: 'raw',
-          path: rawNotePath,
-          filename: `${slug}.md`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        rawContent,
+        markdown: extracted.markdown,
+        suggestedSlug: buildUploadSlug(filename),
+        mimeType,
       })
     } finally {
       fs.unlink(tmpPath).catch(() => {})
