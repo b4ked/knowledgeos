@@ -138,12 +138,19 @@ export async function POST(request: Request) {
 function generateSlugFromOutput(notePaths: string[], output?: string): string {
   const genericTitles = new Set([
     'overview',
+    'executive_summary',
+    'executive summary',
     'summary',
     'notes',
     'note',
     'document',
     'untitled',
     'introduction',
+    'key_concepts',
+    'key concepts',
+    'connections',
+    'socratic_review_questions',
+    'socratic review questions',
   ])
 
   if (output) {
@@ -152,16 +159,23 @@ function generateSlugFromOutput(notePaths: string[], output?: string): string {
       const slug = headingMatch[1]
         .trim()
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
         .slice(0, 80)
       if (slug && !genericTitles.has(slug)) return slug
     }
   }
-  const base = path.basename(notePaths[0], '.md').replace(/[_\-]?temp[_\-]\d+/i, '').replace(/^[-_]|[-_]$/g, '') || 'note'
+  const base = path.basename(notePaths[0], '.md')
+    .replace(/[_-]?temp[_-]\d+/i, '')
+    .replace(/(?:[_-]?raw)$/i, '')
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '') || 'note'
   if (notePaths.length === 1) return base
   const second = path.basename(notePaths[1], '.md')
-  return `${base}+${second}`
+    .replace(/(?:[_-]?raw)$/i, '')
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+  return `${base}_${second}`
 }
 
 function withCompiledFrontmatter(output: string, conventions: Partial<Conventions>): string {

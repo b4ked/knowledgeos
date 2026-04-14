@@ -83,24 +83,47 @@ export function extractWikilinks(markdown: string): string[] {
 }
 
 function generateSlug(notePaths: string[], output?: string): string {
+  const genericTitles = new Set([
+    'overview',
+    'executive_summary',
+    'executive summary',
+    'summary',
+    'notes',
+    'note',
+    'document',
+    'untitled',
+    'introduction',
+    'key_concepts',
+    'key concepts',
+    'connections',
+    'socratic_review_questions',
+    'socratic review questions',
+  ])
   // Prefer deriving slug from the first heading in the compiled output
   if (output) {
-    const headingMatch = output.match(/^#{1,3}\s+(.+)$/m)
-    if (headingMatch) {
+    const headingMatches = output.matchAll(/^#{1,3}\s+(.+)$/gm)
+    for (const headingMatch of headingMatches) {
       const slug = headingMatch[1]
         .trim()
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
         .slice(0, 80)
-      if (slug) return slug
+      if (slug && !genericTitles.has(slug)) return slug
     }
   }
   // Fall back to source filename
-  const base = path.basename(notePaths[0], '.md').replace(/[_\-]?temp[_\-]\d+/i, '').replace(/^[-_]|[-_]$/g, '') || 'note'
+  const base = path.basename(notePaths[0], '.md')
+    .replace(/[_-]?temp[_-]\d+/i, '')
+    .replace(/(?:[_-]?raw)$/i, '')
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '') || 'note'
   if (notePaths.length === 1) return base
   const second = path.basename(notePaths[1], '.md')
-  return `${base}+${second}`
+    .replace(/(?:[_-]?raw)$/i, '')
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+  return `${base}_${second}`
 }
 
 async function updateIndex(vaultPath: string, wikilinks: string[]): Promise<void> {

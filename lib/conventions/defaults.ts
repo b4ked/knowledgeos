@@ -110,6 +110,7 @@ Source material instructions:
 - Retain specific facts, arguments, frameworks, examples, and named concepts from every source
 - Where sources overlap, consolidate; where they differ, note the distinction
 - The compiled note should be a faithful, comprehensive synthesis — not a brief summary
+- Default to depth over brevity. If the source is substantial, the output should also be substantial.
 
 Output format: ${c.outputFormat}
 
@@ -119,6 +120,7 @@ Naming convention: ${c.namingConvention}${customLine}
 
 Rules:
 - Start with exactly one top-level heading: # Short Descriptive Title
+- The main title must be a specific 2-6 word description of the source's real topic, not a generic label and not just the raw filename repeated back
 - Use ## and ### headers to structure the note
 - Wrap key concepts, named entities, and frameworks in [[wikilinks]]
 - Use singular form for wikilinks: [[Strategy]] not [[Strategies]]
@@ -127,5 +129,6 @@ Rules:
 - Include a ## Key Concepts section listing all linked concepts
 - Include a ## Connections section noting links to other topics
 - Format: raw markdown only, no conversational filler
+- Prefer detailed explanations, examples, and sub-bullets over compressed summaries
 - End with 2-3 Socratic review questions${tagLine}`
 }

@@ -90,7 +90,6 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, va
           body: JSON.stringify({
             notePaths: [rawPath],
             sources: [finalContent],
-            outputFilename: providedName || undefined,
             conventions: selectedConventions,
           }),
         })
@@ -140,7 +139,6 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, va
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             notePaths: [rawNote.path],
-            outputFilename: providedName,
             conventions: selectedConventions,
           }),
         })

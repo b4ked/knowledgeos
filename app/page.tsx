@@ -59,6 +59,16 @@ type ImportedFileResult = {
   tags: string
 }
 
+function defaultImportItem(file: File, index: number): ImportedFileResult {
+  return {
+    clientId: `${Date.now()}-${index}-${file.name}`,
+    filename: file.name,
+    status: 'processing',
+    preset: 'default',
+    tags: '',
+  }
+}
+
 export default function Home() {
   const [folder, setFolder] = useState<Folder>('wiki')
   const [notes, setNotes] = useState<NoteMetadata[]>([])
@@ -118,6 +128,7 @@ export default function Home() {
   const resizeStartWidth = useRef(320)
   const resizeStartXSidebar = useRef(0)
   const resizeStartWidthSidebar = useRef(256)
+  const pageDragCounter = useRef(0)
   const { toasts, addToast, removeToast } = useToast()
   const { status: sessionStatus } = useSession()
   const presetOptions = [...Object.keys(BUILT_IN_PRESETS), ...sidebarPresets]
@@ -195,10 +206,11 @@ export default function Home() {
     const displayTitle = safeExt === '.' ? filename : filename.slice(0, -safeExt.length) || filename
     const existingRawNotes = await listVaultNotes('raw')
     const existingSlugs = new Set(existingRawNotes.map((note) => note.slug))
-    let slug = suggestedSlug || 'imported-file'
+    const baseSuggestedSlug = `${suggestedSlug || 'imported-file'}_raw`
+    let slug = baseSuggestedSlug
     let counter = 2
     while (existingSlugs.has(slug)) {
-      slug = `${suggestedSlug || 'imported-file'}-${counter}`
+      slug = `${baseSuggestedSlug}_${counter}`
       counter++
     }
 
@@ -274,7 +286,7 @@ export default function Home() {
 
     if (showGraph) {
       setGraphLoading(true)
-      setTimeout(() => { void loadGraph() }, 0)
+      setTimeout(() => { void loadGraph() }, 50)
     }
   }
 
@@ -918,6 +930,7 @@ export default function Home() {
       setCheckedSlugs(new Set())
       setFolder('wiki')
       if (showGraph) loadGraph()
+      setUsageVersion((v) => v + 1)
       addToast(`Compiled → ${data.slug}`, 'success')
       setTimeout(async () => {
         const wikiRes = await fetch(`/api/notes/${data.slug}?folder=wiki`)
@@ -958,13 +971,7 @@ export default function Home() {
     setImportCompileError(null)
     setSameImportPreset(true)
     setShowImportModal(true)
-    setImportFiles(droppedFiles.map((file, index) => ({
-      clientId: `${Date.now()}-${index}-${file.name}`,
-      filename: file.name,
-      status: 'processing',
-      preset: 'default',
-      tags: '',
-    })))
+      setImportFiles(droppedFiles.map((file, index) => defaultImportItem(file, index)))
     setSharedImportPreset('default')
     setSameImportTags(true)
     setSharedImportTags('')
@@ -1102,12 +1109,10 @@ export default function Home() {
           ? {
               notePaths: [file.rawNote!.path],
               sources: [file.rawContent ?? ''],
-              outputFilename: file.rawNote!.slug,
               conventions,
             }
           : {
               notePaths: [file.rawNote!.path],
-              outputFilename: file.rawNote!.slug,
               conventions,
             }
 
@@ -1157,6 +1162,7 @@ export default function Home() {
         })
         setNoteContent(last.output)
         addToast(`Compiled ${compiled.length} file${compiled.length !== 1 ? 's' : ''} into the wiki`, 'success')
+        setUsageVersion((v) => v + compiled.length)
       }
 
       if (failures.length > 0) {
@@ -1330,8 +1336,44 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showGraph])
 
+  useEffect(() => {
+    function onWindowDragOver(event: DragEvent) {
+      event.preventDefault()
+    }
+    function onWindowDrop(event: DragEvent) {
+      event.preventDefault()
+    }
+    window.addEventListener('dragover', onWindowDragOver)
+    window.addEventListener('drop', onWindowDrop)
+    return () => {
+      window.removeEventListener('dragover', onWindowDragOver)
+      window.removeEventListener('drop', onWindowDrop)
+    }
+  }, [])
+
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
+    <div
+      className={`flex flex-col h-screen bg-gray-950 text-gray-100 ${sidebarDragging ? 'bg-blue-950/10' : ''}`}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        pageDragCounter.current += 1
+        setSidebarDragging(true)
+      }}
+      onDragOver={(event) => {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault()
+        pageDragCounter.current = Math.max(0, pageDragCounter.current - 1)
+        if (pageDragCounter.current === 0) setSidebarDragging(false)
+      }}
+      onDrop={(event) => {
+        event.preventDefault()
+        pageDragCounter.current = 0
+        void handleDroppedFiles(event.dataTransfer.files)
+      }}
+    >
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 h-12 shrink-0">
         <a
