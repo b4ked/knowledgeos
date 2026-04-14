@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { users, passwordResetTokens } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { randomBytes } from "crypto"
 import { sendPasswordResetEmail } from "@/lib/email/send"
 
@@ -20,6 +20,11 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ message: "If an account exists, a reset email has been sent." })
     }
+
+    await db
+      .update(passwordResetTokens)
+      .set({ used: true })
+      .where(and(eq(passwordResetTokens.userId, user.id), eq(passwordResetTokens.used, false)))
 
     const token = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour

@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
     const token = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
 
+    await db
+      .update(emailVerificationTokens)
+      .set({ used: true })
+      .where(eq(emailVerificationTokens.userId, user.id))
+
     await db.insert(emailVerificationTokens).values({
       userId: user.id,
       token,
@@ -71,10 +76,7 @@ export async function POST(req: NextRequest) {
     const detail = (err as any)?.detail
     console.error("Signup error:", { msg, causeMsg, code, detail, stack: err instanceof Error ? err.stack : undefined })
     return NextResponse.json({
-      error: `Could not create account: ${msg}`,
-      cause: causeMsg,
-      code,
-      detail,
+      error: "Could not create account. Please try again.",
     }, { status: 500 })
   }
 }

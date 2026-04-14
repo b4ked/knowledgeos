@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     await db
       .update(passwordResetTokens)
       .set({ used: true })
-      .where(eq(passwordResetTokens.id, record.id))
+      .where(eq(passwordResetTokens.userId, record.userId))
 
     return NextResponse.json({ message: "Password updated successfully" })
   } catch (err) {

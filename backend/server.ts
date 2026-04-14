@@ -46,6 +46,14 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, vault: getVaultPath() })
 })
 
+app.use('/api', (req, res, next) => {
+  if (req.path === '/upload-public') {
+    next()
+    return
+  }
+  bearerAuth(req, res, next)
+})
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getVaultPath(): string {
@@ -500,8 +508,6 @@ async function handleUploadRequest(req: express.Request, res: express.Response) 
 }
 
 app.post('/api/upload-public', handleUploadRequest)
-
-app.use(bearerAuth)
 
 app.post('/api/upload', handleUploadRequest)
 
