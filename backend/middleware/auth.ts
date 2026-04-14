@@ -3,8 +3,7 @@ import type { Request, Response, NextFunction } from 'express'
 export function bearerAuth(req: Request, res: Response, next: NextFunction): void {
   const token = process.env.VPS_API_TOKEN
   if (!token) {
-    // No token configured — allow all (dev mode)
-    next()
+    res.status(503).json({ error: 'VPS API token is not configured' })
     return
   }
 
