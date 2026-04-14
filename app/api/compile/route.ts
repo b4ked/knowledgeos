@@ -11,6 +11,7 @@ import { extractWikilinks } from '@/lib/compiler/compile'
 import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
 import { hashContent } from '@/lib/rag/hash'
 import { checkAndIncrementUsage } from '@/lib/usage'
+import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
       }
     }
     try {
-      const output = await llm.compile(providedSources, merged)
+      const output = withCompiledFrontmatter(await llm.compile(providedSources, merged), merged)
       const wikilinks = extractWikilinks(output)
       const slug = outputFilename
         ? outputFilename.replace(/\.md$/, '')
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
 
       // Read source notes from cloud adapter
       const sources = await Promise.all(notePaths!.map((p) => adapter.readNote(p)))
-      const output = await llm.compile(sources, merged)
+      const output = withCompiledFrontmatter(await llm.compile(sources, merged), merged)
 
       // Extract wikilinks from output
       const wikilinks = extractWikilinks(output)
@@ -161,4 +162,16 @@ function generateSlugFromOutput(notePaths: string[], output?: string): string {
   if (notePaths.length === 1) return base
   const second = path.basename(notePaths[1], '.md')
   return `${base}+${second}`
+}
+
+function withCompiledFrontmatter(output: string, conventions: Partial<Conventions>): string {
+  const parsed = parseNoteFrontmatter(output)
+  return stringifyWithFrontmatter(
+    {
+      ...parsed.frontmatter,
+      tags: [...parsed.frontmatter.tags, ...(conventions.tags ?? [])],
+      date: parsed.frontmatter.date ?? new Date().toISOString().split('T')[0],
+    },
+    parsed.content,
+  )
 }

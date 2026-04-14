@@ -6,6 +6,7 @@ import type { Conventions } from '@/lib/conventions/types'
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import type { VaultMode } from '@/components/VaultModeBanner'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
+import { extractInlineTags, normaliseTagList, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
 
 interface NewNotePanelProps {
   onSave: (note: NoteMetadata) => void
@@ -23,9 +24,8 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, va
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  const [showFrontmatter, setShowFrontmatter] = useState(false)
   const [fmTags, setFmTags] = useState('')
-  const [fmDate, setFmDate] = useState('')
+  const [fmDate, setFmDate] = useState(() => new Date().toISOString().split('T')[0])
   const [customPresets, setCustomPresets] = useState<string[]>([])
   const [selectedPreset, setSelectedPreset] = useState<string>('default')
   const [selectedPresetSource, setSelectedPresetSource] = useState<PresetSource>('builtin')
@@ -67,15 +67,14 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, va
     setSaving(true)
     setError(null)
 
-    let finalContent = content
-    if (showFrontmatter && (fmTags.trim() || fmDate)) {
-      const { stringifyWithFrontmatter } = await import('@/lib/vault/frontmatter')
-      const tags = fmTags.split(',').map((t: string) => t.trim()).filter(Boolean)
-      finalContent = stringifyWithFrontmatter(
-        { tags, date: fmDate || undefined },
-        content
-      )
-    }
+    const tags = normaliseTagList([
+      ...fmTags.split(','),
+      ...extractInlineTags(content),
+    ])
+    const finalContent = stringifyWithFrontmatter(
+      { tags, date: fmDate },
+      content
+    )
 
     try {
       const providedName = filename.trim()
@@ -281,32 +280,20 @@ export default function NewNotePanel({ onSave, onCancel, defaultFolderPrefix, va
         <div className="flex gap-2 items-start">
           <label className="text-xs text-gray-500 w-20 pt-1 shrink-0">Frontmatter</label>
           <div className="flex-1 flex flex-col gap-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showFrontmatter}
-                onChange={e => setShowFrontmatter(e.target.checked)}
-                className="accent-blue-500"
-              />
-              <span className="text-xs text-gray-400">Add frontmatter</span>
-            </label>
-            {showFrontmatter && (
-              <div className="flex flex-col gap-2 pl-1">
-                <input
-                  type="text"
-                  value={fmTags}
-                  onChange={e => setFmTags(e.target.value)}
-                  placeholder="tags (comma-separated)"
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
-                />
-                <input
-                  type="date"
-                  value={fmDate}
-                  onChange={e => setFmDate(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
-                />
-              </div>
-            )}
+            <input
+              type="text"
+              value={fmTags}
+              onChange={e => setFmTags(e.target.value)}
+              placeholder="tags (comma-separated)"
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+            />
+            <input
+              type="date"
+              value={fmDate}
+              onChange={e => setFmDate(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+            />
+            <p className="text-xs text-gray-700">Comma-separated tags and inline #tags in the note are merged together.</p>
           </div>
         </div>
 

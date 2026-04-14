@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
+import { normaliseTagList, parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
 import type { NoteFrontmatter } from '@/lib/vault/frontmatter'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
 
@@ -25,7 +25,11 @@ export default function FrontmatterPanel({ content, slug, folder, onContentSaved
 
   useEffect(() => {
     const parsed = parseNoteFrontmatter(content)
-    setFm(parsed.frontmatter)
+    setFm({
+      ...parsed.frontmatter,
+      tags: normaliseTagList(parsed.frontmatter.tags),
+      date: parsed.frontmatter.date ?? new Date().toISOString().split('T')[0],
+    })
     setBody(parsed.content)
     isFirstRender.current = true
   }, [content])
@@ -65,10 +69,9 @@ export default function FrontmatterPanel({ content, slug, folder, onContentSaved
   }
 
   function addTag() {
-    const tag = tagInput.trim().replace(/^#/, '')
-    if (!tag) return
-    if (fm.tags.includes(tag)) { setTagInput(''); return }
-    setFm(prev => ({ ...prev, tags: [...prev.tags, tag] }))
+    const tags = normaliseTagList(tagInput.split(','))
+    if (tags.length === 0) return
+    setFm(prev => ({ ...prev, tags: normaliseTagList([...prev.tags, ...tags]) }))
     setTagInput('')
   }
 

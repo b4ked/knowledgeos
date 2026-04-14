@@ -1,5 +1,9 @@
 import path from 'path'
 import fs from 'fs/promises'
+import { auth } from '@/auth'
+import { db } from '@/lib/db'
+import { userPreferences } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 import type { Conventions } from '@/lib/conventions/types'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
@@ -13,6 +17,13 @@ function conventionsPath(vaultPath: string) {
 }
 
 export async function GET() {
+  const session = await auth()
+  if (session?.user?.id) {
+    const prefs = await db.query.userPreferences.findFirst({
+      where: eq(userPreferences.userId, session.user.id),
+    })
+    return Response.json({ ...DEFAULT_CONVENTIONS, ...((prefs?.conventions as Partial<Conventions> | undefined) ?? {}) })
+  }
   if (getVpsConfig()) return proxyToVps('/api/conventions', 'GET')
   const filePath = conventionsPath(getVaultPath())
   try {
@@ -25,6 +36,25 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const body = await request.json() as Partial<Conventions>
+  const session = await auth()
+  if (session?.user?.id) {
+    const merged: Conventions = { ...DEFAULT_CONVENTIONS, ...body }
+    const existing = await db.query.userPreferences.findFirst({
+      where: eq(userPreferences.userId, session.user.id),
+    })
+    if (existing) {
+      await db.update(userPreferences)
+        .set({ conventions: merged, updatedAt: new Date() })
+        .where(eq(userPreferences.userId, session.user.id))
+    } else {
+      await db.insert(userPreferences).values({
+        userId: session.user.id,
+        conventions: merged,
+        vaultMode: 'cloud',
+      })
+    }
+    return Response.json(merged)
+  }
   if (getVpsConfig()) return proxyToVps('/api/conventions', 'PUT', body)
   const merged: Conventions = { ...DEFAULT_CONVENTIONS, ...body }
   const vaultPath = getVaultPath()

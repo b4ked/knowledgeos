@@ -5,6 +5,7 @@ import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 import { upsertEmbedding, writeMeta } from '@/lib/embeddings/store'
 import type { Conventions } from '@/lib/conventions/types'
+import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
 
 export interface CompileResult {
   outputPath: string   // e.g. 'wiki/my-note-compiled.md'
@@ -32,9 +33,10 @@ export async function compile(
   // Compile via LLM
   const llm = getLLMProvider(conventions)
   const output = await llm.compile(sources, merged)
+  const compiled = applyCompiledFrontmatter(output, merged)
 
   // Extract wikilinks from output
-  const wikilinks = extractWikilinks(output)
+  const wikilinks = extractWikilinks(compiled)
 
   // Determine output slug/path
   const slug = outputFilename
@@ -43,14 +45,14 @@ export async function compile(
   const outputPath = `wiki/${slug}.md`
 
   // Write compiled note
-  await adapter.writeNote(outputPath, output)
+  await adapter.writeNote(outputPath, compiled)
 
   // Update vault/index.md
   await updateIndex(vaultPath, wikilinks)
 
   // Generate and store embedding (non-fatal — compile succeeds even if embed fails)
   try {
-    const embedding = await llm.embed(output)
+    const embedding = await llm.embed(compiled)
     await upsertEmbedding(vaultPath, slug, embedding)
     const provider = conventions.provider ?? process.env.LLM_PROVIDER ?? 'anthropic'
     const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
@@ -60,6 +62,19 @@ export async function compile(
   }
 
   return { outputPath, slug, wikilinks }
+}
+
+function applyCompiledFrontmatter(output: string, conventions: Partial<Conventions>): string {
+  const parsed = parseNoteFrontmatter(output)
+  const tags = [...parsed.frontmatter.tags, ...(conventions.tags ?? [])]
+  return stringifyWithFrontmatter(
+    {
+      ...parsed.frontmatter,
+      tags,
+      date: parsed.frontmatter.date ?? new Date().toISOString().split('T')[0],
+    },
+    parsed.content,
+  )
 }
 
 export function extractWikilinks(markdown: string): string[] {

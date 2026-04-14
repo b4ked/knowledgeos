@@ -16,7 +16,6 @@ import VaultModeBanner from '@/components/VaultModeBanner'
 import UsageBanner from '@/components/UsageBanner'
 import RAGPanel from '@/components/RAGPanel'
 import ToastStack from '@/components/ToastStack'
-import ClipPanel from '@/components/ClipPanel'
 import TagBrowser from '@/components/TagBrowser'
 import { useToast } from '@/lib/toast/useToast'
 import type { VaultMode } from '@/components/VaultModeBanner'
@@ -37,8 +36,7 @@ import {
 import { BUILT_IN_PRESETS } from '@/lib/conventions/defaults'
 import UserMenu from '@/components/UserMenu'
 import FrontmatterPanel from '@/components/FrontmatterPanel'
-import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
-import InsightsPanel from '@/components/InsightsPanel'
+import { normaliseTagList, parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 import GraphQueryBar from '@/components/GraphQueryBar'
 import FileImportModal, { type FileImportItem } from '@/components/FileImportModal'
 import type { QueryInsights } from '@/components/GraphQueryBar'
@@ -52,12 +50,13 @@ const PUBLIC_UPLOAD_URL = process.env.NEXT_PUBLIC_VPS_UPLOAD_URL?.trim() || 'htt
 type ImportedFileResult = {
   clientId: string
   filename: string
-  status: 'ready' | 'error'
+  status: 'processing' | 'ready' | 'error'
   error?: string
   rawNote?: NoteMetadata
   rawContent?: string
   mimeType?: string
   preset: string
+  tags: string
 }
 
 export default function Home() {
@@ -86,9 +85,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false)
   const [showRAG, setShowRAG] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
-  const [showClip, setShowClip] = useState(false)
   const [showTags, setShowTags] = useState(false)
-  const [showInsights, setShowInsights] = useState(false)
   const [queryInsights, setQueryInsights] = useState<QueryInsights | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -107,7 +104,9 @@ export default function Home() {
   const [importFiles, setImportFiles] = useState<ImportedFileResult[]>([])
   const [showImportModal, setShowImportModal] = useState(false)
   const [sameImportPreset, setSameImportPreset] = useState(true)
-  const [sharedImportPreset, setSharedImportPreset] = useState('document')
+  const [sharedImportPreset, setSharedImportPreset] = useState('default')
+  const [sameImportTags, setSameImportTags] = useState(true)
+  const [sharedImportTags, setSharedImportTags] = useState('')
   const [importCompileError, setImportCompileError] = useState<string | null>(null)
   const sidebarDragCounter = useRef(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
@@ -122,8 +121,7 @@ export default function Home() {
   const { toasts, addToast, removeToast } = useToast()
   const { status: sessionStatus } = useSession()
   const presetOptions = [...Object.keys(BUILT_IN_PRESETS), ...sidebarPresets]
-
-  const resetVaultUi = useCallback((nextFolder: Folder = 'wiki') => {
+  const clearVaultVisualState = useCallback((nextFolder: Folder = 'wiki') => {
     loadGraphVersion.current += 1
     setFolder(nextFolder)
     setNotes([])
@@ -136,15 +134,24 @@ export default function Home() {
     setHighlightedSlugs(new Set())
     setGraphData({ nodes: [], edges: [] })
     graphDataRef.current = { nodes: [], edges: [] }
+    setGraphLoading(false)
     setNoteTags({})
     setLocalTags([])
     setActiveTag(null)
+  }, [])
+
+  const resetVaultUi = useCallback((nextFolder: Folder = 'wiki') => {
+    clearVaultVisualState(nextFolder)
     setShowImportModal(false)
     setImportFiles([])
     setImportCompileError(null)
+    setSameImportPreset(true)
+    setSharedImportPreset('default')
+    setSameImportTags(true)
+    setSharedImportTags('')
     setSidebarDragging(false)
     sidebarDragCounter.current = 0
-  }, [])
+  }, [clearVaultVisualState])
 
   const resolvePresetConventions = useCallback(async (preset: string): Promise<Record<string, unknown>> => {
     if (BUILT_IN_PRESETS[preset]) return BUILT_IN_PRESETS[preset]
@@ -240,10 +247,6 @@ export default function Home() {
       browserAdapterRef.current = adapter
     }
 
-    resetVaultUi('wiki')
-    setVaultMode(mode)
-    setLocalHandleMissing(mode === 'local' && !nextAdapter)
-
     try {
       window.localStorage.setItem('knowledgeos.activeVaultMode', mode)
     } catch {
@@ -257,13 +260,21 @@ export default function Home() {
         // Non-fatal — local mode still works for this session
       }
     }
-    // Persist preference for authenticated users
     if (sessionStatus === 'authenticated') {
-      fetch('/api/preferences', {
+      await fetch('/api/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vaultMode: mode }),
       }).catch(() => { /* non-fatal */ })
+    }
+
+    resetVaultUi('wiki')
+    setVaultMode(mode)
+    setLocalHandleMissing(mode === 'local' && !nextAdapter)
+
+    if (showGraph) {
+      setGraphLoading(true)
+      setTimeout(() => { void loadGraph() }, 0)
     }
   }
 
@@ -946,7 +957,17 @@ export default function Home() {
     setUploading(true)
     setImportCompileError(null)
     setSameImportPreset(true)
-    setSharedImportPreset('document')
+    setShowImportModal(true)
+    setImportFiles(droppedFiles.map((file, index) => ({
+      clientId: `${Date.now()}-${index}-${file.name}`,
+      filename: file.name,
+      status: 'processing',
+      preset: 'default',
+      tags: '',
+    })))
+    setSharedImportPreset('default')
+    setSameImportTags(true)
+    setSharedImportTags('')
 
     try {
       const uploadedResults: Array<{
@@ -997,7 +1018,8 @@ export default function Home() {
             filename: result.filename,
             status: 'error',
             error: result.error ?? 'Could not extract text from this file.',
-            preset: 'document',
+            preset: 'default',
+            tags: '',
           })
           continue
         }
@@ -1016,7 +1038,8 @@ export default function Home() {
             rawNote: created.rawNote,
             rawContent: created.rawContent,
             mimeType: result.mimeType,
-            preset: 'document',
+            preset: 'default',
+            tags: '',
           })
         } catch (err) {
           nextFiles.push({
@@ -1024,13 +1047,13 @@ export default function Home() {
             filename: result.filename,
             status: 'error',
             error: err instanceof Error ? err.message : 'Could not save this file to the current vault.',
-            preset: 'document',
+            preset: 'default',
+            tags: '',
           })
         }
       }
 
       setImportFiles(nextFiles)
-      setShowImportModal(true)
       setFolder('raw')
       setSelectedNote(null)
       setNoteContent('')
@@ -1062,8 +1085,17 @@ export default function Home() {
 
       for (const file of readyFiles) {
         const preset = sameImportPreset ? sharedImportPreset : file.preset
+        const selectedTags = normaliseTagList((sameImportTags ? sharedImportTags : file.tags).split(','))
         if (!presetCache.has(preset)) {
           presetCache.set(preset, await resolvePresetConventions(preset))
+        }
+        const baseConventions = presetCache.get(preset) ?? {}
+        const conventions = {
+          ...baseConventions,
+          tags: normaliseTagList([
+            ...(((baseConventions as { tags?: string[] }).tags) ?? []),
+            ...selectedTags,
+          ]),
         }
 
         const requestBody = vaultMode === 'local'
@@ -1071,12 +1103,12 @@ export default function Home() {
               notePaths: [file.rawNote!.path],
               sources: [file.rawContent ?? ''],
               outputFilename: file.rawNote!.slug,
-              conventions: presetCache.get(preset),
+              conventions,
             }
           : {
               notePaths: [file.rawNote!.path],
               outputFilename: file.rawNote!.slug,
-              conventions: presetCache.get(preset),
+              conventions,
             }
 
         const res = await fetch('/api/compile', {
@@ -1109,21 +1141,7 @@ export default function Home() {
       }
 
       if (compiled.length > 0) {
-        loadGraphVersion.current += 1
-        setFolder('wiki')
-        setNotes([])
-        setSelectedNote(null)
-        setNoteContent('')
-        setPanel('viewer')
-        setCheckedSlugs(new Set())
-        setCompileError(null)
-        setQueryInsights(null)
-        setHighlightedSlugs(new Set())
-        setGraphData({ nodes: [], edges: [] })
-        graphDataRef.current = { nodes: [], edges: [] }
-        setNoteTags({})
-        setLocalTags([])
-        setActiveTag(null)
+        clearVaultVisualState('wiki')
         await loadNotes('wiki')
         await loadGraph()
 
@@ -1376,15 +1394,6 @@ export default function Home() {
             Settings
           </button>
           <button
-            onClick={() => setShowClip(true)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              showClip ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
-            }`}
-            title="Clip URL or paste content to raw vault"
-          >
-            Clip
-          </button>
-          <button
             onClick={() => setShowTags(v => !v)}
             className={`px-3 py-1 text-xs rounded transition-colors ${
               showTags ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
@@ -1392,15 +1401,6 @@ export default function Home() {
             title="Browse tags"
           >
             Tags
-          </button>
-          <button
-            onClick={() => setShowInsights(true)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              showInsights ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
-            }`}
-            title="Vault insights"
-          >
-            Insights
           </button>
           <button
             onClick={() => setShowHelp(true)}
@@ -1564,7 +1564,7 @@ export default function Home() {
                           : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
                       }`}
                     >
-                      {key}
+                      {key === 'default' ? 'Default' : key}
                     </button>
                   ))}
                   {sidebarPresets.map((name) => (
@@ -1791,42 +1791,14 @@ export default function Home() {
       {/* RAG index panel */}
       {showRAG && <RAGPanel onClose={() => setShowRAG(false)} />}
 
-      {/* Clip panel */}
-      {showClip && (
-        <ClipPanel
-          onClose={() => setShowClip(false)}
-          onClipped={(note) => {
-            const noteFolder = note.folder as Folder
-            if (noteFolder !== folder) setFolder(noteFolder)
-            loadNotes(noteFolder)
-            setShowClip(false)
-            addToast(`Clipped → ${note.path}`, 'success')
-          }}
-          vaultMode={vaultMode}
-          browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : null}
-        />
-      )}
-
-      {/* Insights panel */}
-      {showInsights && (
-        <InsightsPanel
-          onClose={() => setShowInsights(false)}
-          onNoteClick={(slug) => {
-            setShowInsights(false)
-            handleWikilinkClick(slug)
-          }}
-          vaultMode={vaultMode}
-          localGraphData={vaultMode === 'local' ? graphData : undefined}
-          browserAdapter={vaultMode === 'local' ? browserAdapterRef.current : undefined}
-        />
-      )}
-
       {showImportModal && (
         <FileImportModal
           items={importFiles as FileImportItem[]}
           presetOptions={presetOptions}
           samePresetForAll={sameImportPreset}
           sharedPreset={sharedImportPreset}
+          sameTagsForAll={sameImportTags}
+          sharedTags={sharedImportTags}
           uploading={uploading}
           compiling={importCompiling}
           compileError={importCompileError}
@@ -1839,9 +1811,16 @@ export default function Home() {
           onCompile={() => { void handleCompileImportedFiles() }}
           onSamePresetChange={setSameImportPreset}
           onSharedPresetChange={setSharedImportPreset}
+          onSameTagsChange={setSameImportTags}
+          onSharedTagsChange={setSharedImportTags}
           onItemPresetChange={(clientId, preset) => {
             setImportFiles((prev) => prev.map((item) => (
               item.clientId === clientId ? { ...item, preset } : item
+            )))
+          }}
+          onItemTagsChange={(clientId, tags) => {
+            setImportFiles((prev) => prev.map((item) => (
+              item.clientId === clientId ? { ...item, tags } : item
             )))
           }}
         />
@@ -1891,13 +1870,22 @@ export default function Home() {
             <div className="space-y-4 text-xs text-gray-400">
               <div>
                 <p className="text-gray-200 font-medium mb-1">The basic idea</p>
-                <p>KnowledgeOS turns raw research into a structured, queryable knowledge base. You paste anything — articles, notes, PDFs — and compile it into linked wiki notes using AI. Then you can explore your knowledge graph or chat with your vault in plain English.</p>
+                <p>KnowledgeOS turns raw research into a structured, queryable knowledge base. You write notes directly or drag documents into the sidebar, extract their text, and compile them into linked wiki notes using AI. Then you can explore your knowledge graph or chat with your vault in plain English.</p>
               </div>
               <div>
                 <p className="text-gray-200 font-medium mb-1">Raw notes vs Wiki notes</p>
                 <ul className="space-y-1 list-disc list-inside">
                   <li><span className="text-gray-300">Raw</span> — your unprocessed source material. Paste anything here.</li>
-                  <li><span className="text-gray-300">Wiki</span> — AI-compiled notes with headers, wikilinks, and key concepts extracted. These are the structured outputs.</li>
+                  <li><span className="text-gray-300">Wiki</span> — AI-compiled notes with dates, tags, wikilinks, and structured sections. These are the structured outputs.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Document import</p>
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>Drag and drop up to 10 files into the left sidebar.</li>
+                  <li>The app extracts text on the VPS, then saves a separate raw note for each file in your current vault.</li>
+                  <li>The import modal opens immediately while extraction runs, then lets you choose one preset and tag set for all files or set them per document.</li>
+                  <li>Each imported file compiles into its own wiki note with its own filename.</li>
                 </ul>
               </div>
               <div>
@@ -1905,7 +1893,7 @@ export default function Home() {
                 <ol className="space-y-1 list-decimal list-inside">
                   <li>Switch to the <span className="text-gray-300">Raw</span> folder in the sidebar</li>
                   <li>Tick one or more raw notes using the checkboxes</li>
-                  <li>Choose a preset (Default, Academic, Legal, etc.)</li>
+                  <li>Choose a preset</li>
                   <li>Click <span className="text-blue-400">Compile Selected</span> — the AI generates a structured wiki note in seconds</li>
                 </ol>
               </div>
@@ -1915,17 +1903,23 @@ export default function Home() {
                   <li><span className="text-gray-300">New Note</span> — create a raw note (⌘N)</li>
                   <li><span className="text-gray-300">Chat</span> — toggle the RAG chat panel — ask questions about your vault in plain English (⌘/)</li>
                   <li><span className="text-gray-300">Graph</span> — toggle the knowledge graph — visualise connections between your notes (⌘G)</li>
-                  <li><span className="text-gray-300">Presets</span> — create and edit custom presets that control how the AI compiles notes (⌘,)</li>
+                  <li><span className="text-gray-300">Tags</span> — browse and filter notes by tags</li>
+                  <li><span className="text-gray-300">Presets</span> — create and edit custom cloud presets that control how the AI compiles notes (⌘,)</li>
                   <li><span className="text-gray-300">RAG</span> — manage the search index used for chat</li>
-                  <li><span className="text-gray-300">Settings</span> — switch between local vault (files on your computer) and remote vault (cloud storage)</li>
+                  <li><span className="text-gray-300">Settings</span> — switch between local, cloud, and demo vaults</li>
                 </ul>
               </div>
               <div>
                 <p className="text-gray-200 font-medium mb-1">Vault modes</p>
                 <ul className="space-y-1 list-disc list-inside">
-                  <li><span className="text-gray-300">Remote</span> — notes stored on KnowledgeOS servers. Works in any browser.</li>
+                  <li><span className="text-gray-300">Cloud</span> — your personal notes stored in the cloud and available in any browser.</li>
                   <li><span className="text-gray-300">Local</span> — points to a folder on your machine. Files never leave your computer. Chrome and Edge only (File System Access API).</li>
+                  <li><span className="text-gray-300">Demo</span> — the shared MBA demo vault hosted on the VPS.</li>
                 </ul>
+              </div>
+              <div>
+                <p className="text-gray-200 font-medium mb-1">Tags and dates</p>
+                <p>Every new or compiled note includes a date. Tags entered in the comma-separated field and inline #tags in the note body are merged together. Preset tags are also added automatically when that preset is used during compilation.</p>
               </div>
               <div>
                 <p className="text-gray-200 font-medium mb-1">Obsidian compatible</p>

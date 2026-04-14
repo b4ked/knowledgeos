@@ -290,6 +290,10 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
             const parsed = parseNoteFrontmatter(content)
             return (
               <>
+                <div className="mb-4 flex items-center gap-2 text-xs text-gray-500">
+                  <span className="uppercase tracking-wide text-gray-600">Date</span>
+                  <span>{parsed.frontmatter.date ?? 'Undated'}</span>
+                </div>
                 {parsed.frontmatter.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {parsed.frontmatter.tags.map(tag => (

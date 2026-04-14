@@ -21,6 +21,7 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
   const [savePresetName, setSavePresetName] = useState('')
   const [savingPreset, setSavingPreset] = useState(false)
   const [deletingPreset, setDeletingPreset] = useState<string | null>(null)
+  const [activePreset, setActivePreset] = useState<'default' | string>('default')
 
   useEffect(() => {
     Promise.all([
@@ -34,6 +35,7 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
 
   function applyBuiltInPreset(key: string) {
     const preset = BUILT_IN_PRESETS[key]
+    setActivePreset(key)
     setForm((prev) => ({ ...DEFAULT_CONVENTIONS, ...prev, ...preset }))
   }
 
@@ -41,6 +43,7 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
     const res = await fetch(`/api/presets/${encodeURIComponent(name)}`)
     if (!res.ok) { onError(`Could not load preset "${name}"`); return }
     const preset = await res.json() as Partial<Conventions>
+    setActivePreset(name)
     setForm((prev) => ({ ...prev, ...preset }))
   }
 
@@ -57,6 +60,7 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
       if (!res.ok) { onError('Failed to save preset'); return }
       setCustomPresets((prev) => prev.includes(name) ? prev : [...prev, name].sort())
       setSavePresetName('')
+      setActivePreset(name)
       onSaved(`Preset "${name}" saved`)
     } catch {
       onError('Network error — could not save preset')
@@ -138,9 +142,11 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
                       <button
                         key={key}
                         onClick={() => applyBuiltInPreset(key)}
-                        className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors capitalize"
+                        className={`px-2 py-1 text-xs rounded transition-colors capitalize ${
+                          activePreset === key ? 'bg-blue-700 text-blue-100' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                        }`}
                       >
-                        {key}
+                        {key === 'default' ? 'Default' : key}
                       </button>
                     ))}
                   </div>
@@ -155,7 +161,9 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
                         <div key={name} className="flex items-center gap-0.5">
                           <button
                             onClick={() => loadCustomPreset(name)}
-                            className="px-2 py-1 text-xs rounded-l bg-gray-800 text-amber-300 hover:bg-gray-700 transition-colors"
+                            className={`px-2 py-1 text-xs rounded-l transition-colors ${
+                              activePreset === name ? 'bg-amber-700 text-amber-100' : 'bg-gray-800 text-amber-300 hover:bg-gray-700'
+                            }`}
                           >
                             {name}
                           </button>
@@ -301,9 +309,15 @@ export default function ConventionsEditor({ onClose, onSaved, onError }: Convent
               {/* Right column — live system prompt preview */}
               <div className="px-6 py-4 flex flex-col">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">System prompt preview</h3>
-                <pre className="flex-1 bg-gray-950 border border-gray-800 rounded p-3 text-xs text-gray-400 overflow-auto whitespace-pre-wrap font-mono leading-relaxed">
-                  {buildSystemPrompt(form)}
-                </pre>
+                {activePreset === 'default' ? (
+                  <div className="flex-1 rounded border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
+                    The system prompt for the built-in Default preset is hidden.
+                  </div>
+                ) : (
+                  <pre className="flex-1 bg-gray-950 border border-gray-800 rounded p-3 text-xs text-gray-400 overflow-auto whitespace-pre-wrap font-mono leading-relaxed">
+                    {buildSystemPrompt(form)}
+                  </pre>
+                )}
               </div>
             </div>
           </div>
