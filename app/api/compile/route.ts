@@ -162,6 +162,8 @@ function generateSlugFromOutput(notePaths: string[], output?: string): string {
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
         .slice(0, 80)
+      const wordCount = slug.split('_').filter(Boolean).length
+      if (/^source_\d+/.test(slug) || wordCount > 8) continue
       if (slug && !genericTitles.has(slug)) return slug
     }
   }
