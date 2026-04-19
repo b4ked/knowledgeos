@@ -5,6 +5,14 @@ export interface VaultSettings {
   rawPath?: string
   wikiPath?: string
   presetsPath?: string
+  compileMaxOutputTokens?: number
+  queryMaxOutputTokens?: number
+  imageExtractMaxOutputTokens?: number
+  enableOpenAIImageEnrichment?: boolean
+  ingestionMaxFilesPerJob?: number
+  ingestionMaxFileSizeMb?: number
+  ingestionRequestsPerMinute?: number
+  ingestionMaxConcurrentJobsPerOwner?: number
 }
 
 function settingsPath(): string {

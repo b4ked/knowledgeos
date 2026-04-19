@@ -997,8 +997,8 @@ export default function Home() {
     sidebarDragCounter.current = 0
 
     if (droppedFiles.length === 0) return
-    if (droppedFiles.length > 10) {
-      addToast('Drag and drop up to 10 files at a time.', 'error')
+    if (droppedFiles.length > 500) {
+      addToast('Drag and drop up to 500 files at a time.', 'error')
       return
     }
 
@@ -1012,6 +1012,40 @@ export default function Home() {
     setSharedImportTags('')
 
     try {
+      const payloadFiles = await Promise.all(
+        droppedFiles.map(async (file) => {
+          const arrayBuffer = await file.arrayBuffer()
+          return {
+            filename: file.name,
+            content: arrayBufferToBase64(arrayBuffer),
+            mimeType: file.type,
+          }
+        }),
+      )
+
+      const res = await fetch(PUBLIC_UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: payloadFiles }),
+      })
+      const data = await res.json() as {
+        results?: Array<{
+          filename: string
+          ok: boolean
+          error?: string
+          markdown?: string
+          suggestedSlug?: string
+          mimeType?: string
+          inputTokens?: number
+          outputTokens?: number
+        }>
+        error?: string
+      }
+
+      if (!res.ok || !Array.isArray(data.results)) {
+        throw new Error(data.error ?? 'Could not upload files')
+      }
+
       const uploadedResults: Array<{
         filename: string
         ok: boolean
@@ -1019,37 +1053,7 @@ export default function Home() {
         markdown?: string
         suggestedSlug?: string
         mimeType?: string
-      }> = []
-
-      for (const file of droppedFiles) {
-        const arrayBuffer = await file.arrayBuffer()
-        const res = await fetch(PUBLIC_UPLOAD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            files: [{
-              filename: file.name,
-              content: arrayBufferToBase64(arrayBuffer),
-              mimeType: file.type,
-            }],
-          }),
-        })
-        const data = await res.json() as {
-          results?: Array<{
-            filename: string
-            ok: boolean
-            error?: string
-            markdown?: string
-            suggestedSlug?: string
-            mimeType?: string
-          }>
-          error?: string
-        }
-        if (!res.ok || !Array.isArray(data.results) || data.results.length === 0) {
-          throw new Error(data.error ?? `Could not upload ${file.name}`)
-        }
-        uploadedResults.push(data.results[0])
-      }
+      }> = data.results
 
       const nextFiles: ImportedFileResult[] = []
       for (const [index, result] of uploadedResults.entries()) {

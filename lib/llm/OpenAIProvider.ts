@@ -7,14 +7,23 @@ export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private compilationModel: string
   private queryModel: string
+  private compileMaxTokens: number
+  private queryMaxTokens: number
 
   constructor(
     apiKey: string,
-    options?: { compilationModel?: string; queryModel?: string }
+    options?: {
+      compilationModel?: string
+      queryModel?: string
+      compileMaxTokens?: number
+      queryMaxTokens?: number
+    }
   ) {
     this.client = new OpenAI({ apiKey })
     this.compilationModel = options?.compilationModel ?? 'gpt-4o'
     this.queryModel = options?.queryModel ?? 'gpt-4o'
+    this.compileMaxTokens = options?.compileMaxTokens ?? 8192
+    this.queryMaxTokens = options?.queryMaxTokens ?? 2048
   }
 
   async compile(sources: string[], conventions: Conventions): Promise<string> {
@@ -25,7 +34,7 @@ export class OpenAIProvider implements LLMProvider {
 
     const completion = await this.client.chat.completions.create({
       model: this.compilationModel,
-      max_tokens: 8192,
+      max_tokens: this.compileMaxTokens,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent },
@@ -44,7 +53,7 @@ export class OpenAIProvider implements LLMProvider {
 
     const completion = await this.client.chat.completions.create({
       model: this.queryModel,
-      max_tokens: 2048,
+      max_tokens: this.queryMaxTokens,
       messages: [
         {
           role: 'system',

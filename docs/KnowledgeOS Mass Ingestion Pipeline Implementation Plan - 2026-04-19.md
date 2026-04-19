@@ -10,6 +10,49 @@ Build a production-ready bulk ingestion pipeline so admins/users can quickly imp
 - OpenAI-assisted image text extraction/description where needed,
 - admin-configurable output token limits so compiled notes are longer and more useful.
 
+## Implementation Progress (updated 2026-04-19)
+- Completed: runtime admin settings schema + normalization (`lib/admin/runtimeSettings.ts`) with token and ingestion limits.
+- Completed: settings persistence and API wiring for token/ingestion controls (`app/api/settings/route.ts`, `backend/server.ts`, `lib/vault/settings.ts`).
+- Completed: admin settings UI controls for compile/query/image token budgets + ingestion limits (`components/SettingsModal.tsx`).
+- Completed: provider runtime token cap wiring in both OpenAI and Anthropic providers (`lib/llm/OpenAIProvider.ts`, `lib/llm/AnthropicProvider.ts`, `lib/llm/getLLMProvider.ts`).
+- Completed: compile/query backend paths now read settings and enforce runtime token caps (`app/api/compile/route.ts`, `app/api/query/route.ts`, `backend/server.ts`).
+- Completed: VPS async ingestion job API with create/start/status/retry/cancel and per-file progress (`backend/server.ts`):
+  - `POST /api/ingestion/jobs`
+  - `GET /api/ingestion/jobs`
+  - `GET /api/ingestion/jobs/:id`
+  - `POST /api/ingestion/jobs/:id/files`
+  - `POST /api/ingestion/jobs/:id/start`
+  - `POST /api/ingestion/jobs/:id/retry`
+  - `POST /api/ingestion/jobs/:id/cancel`
+- Completed: ingestion request rate limiting + per-job/per-file caps enforced from settings (`backend/server.ts`, `app/api/upload/route.ts`).
+- Completed: optional OpenAI image enrichment merged into extraction output when enabled (`backend/server.ts`).
+- Completed: Next API ingestion proxy endpoints for app access to VPS jobs:
+  - `app/api/ingestion/jobs/route.ts`
+  - `app/api/ingestion/jobs/[id]/route.ts`
+  - `app/api/ingestion/jobs/[id]/[action]/route.ts`
+- Completed: frontend upload switched from sequential one-file requests to batched upload request (`app/page.tsx`).
+
+## Validation Completed (2026-04-19)
+- Unit tests:
+  - `npm run test -- tests/unit/llm/OpenAIProvider.test.ts tests/unit/llm/AnthropicProvider.test.ts tests/unit/llm/getLLMProvider.test.ts` (pass)
+  - `npm run test -- tests/unit/compiler/compile.test.ts` (pass)
+- Build/typecheck:
+  - `npm run build` (pass)
+- Backend smoke test (local):
+  - started backend with `npm run backend`
+  - created ingestion job with one file
+  - started job and fetched status
+  - observed terminal status `completed` with `processed=1`, `success=1`
+- Full unit test suite status:
+  - `npm run test` currently has pre-existing unrelated failures in `tests/unit/api/*` and `tests/unit/graph/parseLinks.test.ts` (module resolution + existing assertion mismatch), while modified feature areas pass targeted tests and build/typecheck.
+
+## Remaining Work
+- Implement DB-backed ingestion job persistence (currently in-memory job store in backend process).
+- Add dedicated admin page/tab for ingestion job monitoring (current UI exposes limits and batched upload only).
+- Add full job-oriented frontend UX (polling progress, retry/cancel controls, failed-file filters).
+- Add per-user authenticated ownership model for jobs (currently owner ID is request-provided; suitable for initial internal control but not strict multi-tenant auth).
+- Add daily ingestion byte/token quotas in database and dashboards.
+
 ## Current Baseline (from repo)
 - Upload extraction exists via VPS endpoint in `backend/server.ts` (`/api/upload`, `/api/upload-public`) and uses `backend/scripts/markitdown_extract.py`.
 - Frontend import exists in `app/page.tsx` + `components/FileImportModal.tsx`, but uploads are sequential and capped (`<=10` files/request).

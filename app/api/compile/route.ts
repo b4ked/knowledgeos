@@ -12,6 +12,7 @@ import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
 import { hashContent } from '@/lib/rag/hash'
 import { checkAndIncrementUsage } from '@/lib/usage'
 import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
+import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -31,7 +32,12 @@ export async function POST(request: Request) {
   const userId = session?.user?.id ?? undefined
   const vaultMode = await getServerVaultMode(userId)
   const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
-  const llm = getLLMProvider(conventions ?? {})
+  const settings = await readSettings()
+  const admin = normalizeRuntimeAdminSettings(settings)
+  const llm = getLLMProvider(conventions ?? {}, {
+    compileMaxTokens: admin.compileMaxOutputTokens,
+    queryMaxTokens: admin.queryMaxOutputTokens,
+  })
 
   if (Array.isArray(providedSources) && providedSources.length > 0) {
     if (userId) {
@@ -122,12 +128,22 @@ export async function POST(request: Request) {
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')
 
-  const settings = await readSettings()
   const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
   const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
 
   try {
-    const result = await compile(notePaths!, outputFilename, vaultPath, conventions ?? {}, rawPath, wikiPath)
+    const result = await compile(
+      notePaths!,
+      outputFilename,
+      vaultPath,
+      conventions ?? {},
+      rawPath,
+      wikiPath,
+      {
+        compileMaxTokens: admin.compileMaxOutputTokens,
+        queryMaxTokens: admin.queryMaxOutputTokens,
+      },
+    )
     return Response.json(result, { status: 200 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Compilation failed'

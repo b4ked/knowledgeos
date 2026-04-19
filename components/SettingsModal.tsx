@@ -26,6 +26,14 @@ interface Settings {
   rawPath?: string
   wikiPath?: string
   presetsPath?: string
+  compileMaxOutputTokens?: number
+  queryMaxOutputTokens?: number
+  imageExtractMaxOutputTokens?: number
+  enableOpenAIImageEnrichment?: boolean
+  ingestionMaxFilesPerJob?: number
+  ingestionMaxFileSizeMb?: number
+  ingestionRequestsPerMinute?: number
+  ingestionMaxConcurrentJobsPerOwner?: number
 }
 
 interface TokeniseResult {
@@ -56,6 +64,14 @@ export default function SettingsModal({
   const [rawPath, setRawPath] = useState('')
   const [wikiPath, setWikiPath] = useState('')
   const [presetsPath, setPresetsPath] = useState('')
+  const [compileMaxOutputTokens, setCompileMaxOutputTokens] = useState('8192')
+  const [queryMaxOutputTokens, setQueryMaxOutputTokens] = useState('2048')
+  const [imageExtractMaxOutputTokens, setImageExtractMaxOutputTokens] = useState('1536')
+  const [enableOpenAIImageEnrichment, setEnableOpenAIImageEnrichment] = useState(false)
+  const [ingestionMaxFilesPerJob, setIngestionMaxFilesPerJob] = useState('200')
+  const [ingestionMaxFileSizeMb, setIngestionMaxFileSizeMb] = useState('50')
+  const [ingestionRequestsPerMinute, setIngestionRequestsPerMinute] = useState('120')
+  const [ingestionMaxConcurrentJobsPerOwner, setIngestionMaxConcurrentJobsPerOwner] = useState('2')
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [rawTokenise, setRawTokenise] = useState<FolderTokeniseState>({ status: 'idle' })
@@ -71,6 +87,14 @@ export default function SettingsModal({
         setRawPath(data.rawPath ?? '')
         setWikiPath(data.wikiPath ?? '')
         setPresetsPath(data.presetsPath ?? '')
+        setCompileMaxOutputTokens(String(data.compileMaxOutputTokens ?? 8192))
+        setQueryMaxOutputTokens(String(data.queryMaxOutputTokens ?? 2048))
+        setImageExtractMaxOutputTokens(String(data.imageExtractMaxOutputTokens ?? 1536))
+        setEnableOpenAIImageEnrichment(Boolean(data.enableOpenAIImageEnrichment))
+        setIngestionMaxFilesPerJob(String(data.ingestionMaxFilesPerJob ?? 200))
+        setIngestionMaxFileSizeMb(String(data.ingestionMaxFileSizeMb ?? 50))
+        setIngestionRequestsPerMinute(String(data.ingestionRequestsPerMinute ?? 120))
+        setIngestionMaxConcurrentJobsPerOwner(String(data.ingestionMaxConcurrentJobsPerOwner ?? 2))
         setLoaded(true)
       })
       .catch(() => setLoaded(true))
@@ -101,7 +125,19 @@ export default function SettingsModal({
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawPath: rawPath.trim(), wikiPath: wikiPath.trim(), presetsPath: presetsPath.trim() }),
+        body: JSON.stringify({
+          rawPath: rawPath.trim(),
+          wikiPath: wikiPath.trim(),
+          presetsPath: presetsPath.trim(),
+          compileMaxOutputTokens: Number.parseInt(compileMaxOutputTokens, 10),
+          queryMaxOutputTokens: Number.parseInt(queryMaxOutputTokens, 10),
+          imageExtractMaxOutputTokens: Number.parseInt(imageExtractMaxOutputTokens, 10),
+          enableOpenAIImageEnrichment,
+          ingestionMaxFilesPerJob: Number.parseInt(ingestionMaxFilesPerJob, 10),
+          ingestionMaxFileSizeMb: Number.parseInt(ingestionMaxFileSizeMb, 10),
+          ingestionRequestsPerMinute: Number.parseInt(ingestionRequestsPerMinute, 10),
+          ingestionMaxConcurrentJobsPerOwner: Number.parseInt(ingestionMaxConcurrentJobsPerOwner, 10),
+        }),
       })
       if (res.ok) {
         onSaved?.('Settings saved')
@@ -454,6 +490,101 @@ export default function SettingsModal({
                   placeholder="/path/to/presets"
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono"
                 />
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                  AI Output Limits
+                </h3>
+                <div className="space-y-3 border border-gray-800 rounded-lg p-4">
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Compile max output tokens</span>
+                    <input
+                      type="number"
+                      min={256}
+                      value={compileMaxOutputTokens}
+                      onChange={(e) => setCompileMaxOutputTokens(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Query max output tokens</span>
+                    <input
+                      type="number"
+                      min={128}
+                      value={queryMaxOutputTokens}
+                      onChange={(e) => setQueryMaxOutputTokens(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Image extraction max output tokens</span>
+                    <input
+                      type="number"
+                      min={128}
+                      value={imageExtractMaxOutputTokens}
+                      onChange={(e) => setImageExtractMaxOutputTokens(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={enableOpenAIImageEnrichment}
+                      onChange={(e) => setEnableOpenAIImageEnrichment(e.target.checked)}
+                      className="accent-blue-500"
+                    />
+                    <span>Enable OpenAI image extraction enrichment</span>
+                  </label>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                  Ingestion Limits
+                </h3>
+                <div className="space-y-3 border border-gray-800 rounded-lg p-4">
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Max files per ingestion job</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={ingestionMaxFilesPerJob}
+                      onChange={(e) => setIngestionMaxFilesPerJob(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Max file size (MB)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={ingestionMaxFileSizeMb}
+                      onChange={(e) => setIngestionMaxFileSizeMb(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Ingestion requests per minute</span>
+                    <input
+                      type="number"
+                      min={10}
+                      value={ingestionRequestsPerMinute}
+                      onChange={(e) => setIngestionRequestsPerMinute(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-gray-400 mb-1">Max concurrent jobs per owner</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={ingestionMaxConcurrentJobsPerOwner}
+                      onChange={(e) => setIngestionMaxConcurrentJobsPerOwner(e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs text-gray-100 focus:outline-none focus:border-gray-500"
+                    />
+                  </label>
+                </div>
               </section>
 
               <div className="flex gap-2 justify-end pt-2 border-t border-gray-800">

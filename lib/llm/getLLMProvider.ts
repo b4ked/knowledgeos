@@ -3,7 +3,15 @@ import { AnthropicProvider } from './AnthropicProvider'
 import { OpenAIProvider } from './OpenAIProvider'
 import type { Conventions } from '@/lib/conventions/types'
 
-export function getLLMProvider(conventions?: Partial<Conventions>): LLMProvider {
+interface ProviderRuntimeOptions {
+  compileMaxTokens?: number
+  queryMaxTokens?: number
+}
+
+export function getLLMProvider(
+  conventions?: Partial<Conventions>,
+  runtime?: ProviderRuntimeOptions,
+): LLMProvider {
   // conventions.provider overrides LLM_PROVIDER env var
   const provider = conventions?.provider ?? process.env.LLM_PROVIDER ?? 'anthropic'
 
@@ -13,6 +21,8 @@ export function getLLMProvider(conventions?: Partial<Conventions>): LLMProvider 
     return new OpenAIProvider(key, {
       compilationModel: conventions?.compilationModel,
       queryModel: conventions?.queryModel,
+      compileMaxTokens: runtime?.compileMaxTokens,
+      queryMaxTokens: runtime?.queryMaxTokens,
     })
   }
 
@@ -22,5 +32,7 @@ export function getLLMProvider(conventions?: Partial<Conventions>): LLMProvider 
   return new AnthropicProvider(key, {
     compilationModel: conventions?.compilationModel,
     queryModel: conventions?.queryModel,
+    compileMaxTokens: runtime?.compileMaxTokens,
+    queryMaxTokens: runtime?.queryMaxTokens,
   })
 }

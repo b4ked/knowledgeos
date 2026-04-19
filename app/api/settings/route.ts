@@ -2,6 +2,7 @@ import { readSettings, writeSettings } from '@/lib/vault/settings'
 import type { VaultSettings } from '@/lib/vault/settings'
 import { auth } from '@/auth'
 import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
+import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
 
 export async function GET() {
   const session = await auth()
@@ -10,7 +11,7 @@ export async function GET() {
   }
   if (getVpsConfig()) return proxyToVps('/api/settings', 'GET')
   const settings = await readSettings()
-  return Response.json(settings)
+  return Response.json({ ...settings, ...normalizeRuntimeAdminSettings(settings) })
 }
 
 export async function POST(request: Request) {
@@ -21,10 +22,12 @@ export async function POST(request: Request) {
   const body = await request.json() as Partial<VaultSettings>
   if (getVpsConfig()) return proxyToVps('/api/settings', 'POST', body)
   const { rawPath, wikiPath, presetsPath } = body
+  const normalized = normalizeRuntimeAdminSettings(body)
   await writeSettings({
     rawPath: rawPath || undefined,
     wikiPath: wikiPath || undefined,
     presetsPath: presetsPath || undefined,
+    ...normalized,
   })
   return Response.json({ ok: true })
 }

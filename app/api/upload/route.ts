@@ -1,4 +1,6 @@
 import { getAnyVpsConfig } from '@/lib/vpsProxy'
+import { readSettings } from '@/lib/vault/settings'
+import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
 
 export const maxDuration = 60
 
@@ -51,12 +53,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const files = await readPayload(request)
+  const admin = normalizeRuntimeAdminSettings(await readSettings())
 
   if (files.length === 0) {
     return Response.json({ error: 'No files provided' }, { status: 400 })
   }
-  if (files.length > 10) {
-    return Response.json({ error: 'Upload up to 10 files at a time.' }, { status: 400 })
+  if (files.length > admin.ingestionMaxFilesPerJob) {
+    return Response.json({ error: `Upload up to ${admin.ingestionMaxFilesPerJob} files at a time.` }, { status: 400 })
   }
 
   for (const file of files) {
@@ -64,6 +67,15 @@ export async function POST(request: Request) {
     const ext = ('.' + (filename.split('.').pop() ?? '')).toLowerCase()
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       return Response.json({ error: `Unsupported file type: ${ext}` }, { status: 400 })
+    }
+    const bytes = file instanceof File
+      ? file.size
+      : Math.floor(((file.content?.replace(/\s+/g, '').length ?? 0) * 3) / 4)
+    if (bytes > admin.ingestionMaxFileSizeMb * 1024 * 1024) {
+      return Response.json(
+        { error: `${filename} exceeds ${admin.ingestionMaxFileSizeMb}MB limit.` },
+        { status: 400 },
+      )
     }
   }
 

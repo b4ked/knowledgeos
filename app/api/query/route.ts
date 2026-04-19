@@ -12,6 +12,8 @@ import { getVpsConfig, proxyToVps } from '@/lib/vpsProxy'
 import { parseLinks } from '@/lib/graph/parseLinks'
 import { graphAwareRetrieveFromCloud } from '@/lib/rag/graphAwareRetrieve'
 import type { NoteInput } from '@/lib/graph/parseLinks'
+import { readSettings } from '@/lib/vault/settings'
+import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
 
 interface QueryNoteInput {
   slug: string
@@ -22,8 +24,12 @@ function getVaultPath() {
   return process.env.VAULT_PATH ? path.resolve(process.env.VAULT_PATH) : path.resolve('./vault')
 }
 
-async function queryFromNotes(question: string, notes: QueryNoteInput[]) {
-  const llm = getLLMProvider()
+async function queryFromNotes(
+  question: string,
+  notes: QueryNoteInput[],
+  runtime: { compileMaxTokens: number; queryMaxTokens: number },
+) {
+  const llm = getLLMProvider(undefined, runtime)
   const cleanNotes = notes.filter((note) => note.content.trim().length > 0)
   const questionEmbedding = await llm.embed(question)
 
@@ -47,8 +53,13 @@ async function queryFromNotes(question: string, notes: QueryNoteInput[]) {
   return { answer, sources }
 }
 
-async function queryFromCloud(question: string, userId: string, useGraphAware = true) {
-  const llm = getLLMProvider()
+async function queryFromCloud(
+  question: string,
+  userId: string,
+  runtime: { compileMaxTokens: number; queryMaxTokens: number },
+  useGraphAware = true,
+) {
+  const llm = getLLMProvider(undefined, runtime)
   const embeddings = await listUserEmbeddings(userId, 'wiki')
 
   if (embeddings.length === 0) {
@@ -139,7 +150,12 @@ export async function POST(request: Request) {
           console.error('query: usage check failed (non-fatal):', usageErr)
         }
       }
-      const result = await queryFromNotes(question.trim(), notes)
+      const admin = normalizeRuntimeAdminSettings(await readSettings())
+      const runtime = {
+        compileMaxTokens: admin.compileMaxOutputTokens,
+        queryMaxTokens: admin.queryMaxOutputTokens,
+      }
+      const result = await queryFromNotes(question.trim(), notes, runtime)
       return Response.json(result)
     }
 
@@ -155,7 +171,12 @@ export async function POST(request: Request) {
       } catch (usageErr) {
         console.error('query: usage check failed (non-fatal):', usageErr)
       }
-      const result = await queryFromCloud(question.trim(), session.user.id)
+      const admin = normalizeRuntimeAdminSettings(await readSettings())
+      const runtime = {
+        compileMaxTokens: admin.compileMaxOutputTokens,
+        queryMaxTokens: admin.queryMaxOutputTokens,
+      }
+      const result = await queryFromCloud(question.trim(), session.user.id, runtime)
       if (result.status !== 200) {
         return Response.json({ error: result.error }, { status: result.status })
       }
@@ -165,7 +186,11 @@ export async function POST(request: Request) {
     if (vaultMode === 'remote' && getVpsConfig()) return proxyToVps('/api/query', 'POST', body)
 
     const vaultPath = getVaultPath()
-    const llm = getLLMProvider()
+    const admin = normalizeRuntimeAdminSettings(await readSettings())
+    const llm = getLLMProvider(undefined, {
+      compileMaxTokens: admin.compileMaxOutputTokens,
+      queryMaxTokens: admin.queryMaxOutputTokens,
+    })
 
     // Warn if embeddings were generated with a different provider
     const meta = await readMeta(vaultPath)

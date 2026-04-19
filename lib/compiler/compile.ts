@@ -20,6 +20,7 @@ export async function compile(
   conventions: Partial<Conventions> = {},
   rawPath?: string,
   wikiPath?: string,
+  llmRuntime?: { compileMaxTokens?: number; queryMaxTokens?: number },
 ): Promise<CompileResult> {
   // merged is used for buildSystemPrompt — defaults fill missing fields
   // getLLMProvider receives only user-supplied conventions so the LLM_PROVIDER
@@ -31,7 +32,7 @@ export async function compile(
   const sources = await Promise.all(notePaths.map((p) => adapter.readNote(p)))
 
   // Compile via LLM
-  const llm = getLLMProvider(conventions)
+  const llm = getLLMProvider(conventions, llmRuntime)
   const output = await llm.compile(sources, merged)
   const compiled = applyCompiledFrontmatter(output, merged)
 

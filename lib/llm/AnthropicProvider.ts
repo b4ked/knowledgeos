@@ -7,14 +7,23 @@ export class AnthropicProvider implements LLMProvider {
   private client: Anthropic
   private compilationModel: string
   private queryModel: string
+  private compileMaxTokens: number
+  private queryMaxTokens: number
 
   constructor(
     apiKey: string,
-    options?: { compilationModel?: string; queryModel?: string }
+    options?: {
+      compilationModel?: string
+      queryModel?: string
+      compileMaxTokens?: number
+      queryMaxTokens?: number
+    }
   ) {
     this.client = new Anthropic({ apiKey })
     this.compilationModel = options?.compilationModel ?? 'claude-sonnet-4-6'
     this.queryModel = options?.queryModel ?? 'claude-sonnet-4-6'
+    this.compileMaxTokens = options?.compileMaxTokens ?? 8192
+    this.queryMaxTokens = options?.queryMaxTokens ?? 2048
   }
 
   async compile(sources: string[], conventions: Conventions): Promise<string> {
@@ -25,7 +34,7 @@ export class AnthropicProvider implements LLMProvider {
 
     const message = await this.client.messages.create({
       model: this.compilationModel,
-      max_tokens: 8192,
+      max_tokens: this.compileMaxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     })
@@ -44,7 +53,7 @@ export class AnthropicProvider implements LLMProvider {
 
     const message = await this.client.messages.create({
       model: this.queryModel,
-      max_tokens: 2048,
+      max_tokens: this.queryMaxTokens,
       system:
         'You are a helpful assistant answering questions based on the provided knowledge base notes. Cite which notes you drew from.',
       messages: [
