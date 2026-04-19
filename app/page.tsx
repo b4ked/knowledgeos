@@ -46,6 +46,9 @@ type Panel = 'viewer' | 'new'
 type Tag = { name: string; count: number }
 type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
 const PUBLIC_UPLOAD_URL = process.env.NEXT_PUBLIC_VPS_UPLOAD_URL?.trim() || 'https://api.parrytech.co/knos/api/upload-public'
+const LOCAL_QUERY_MAX_NOTES = 4
+const LOCAL_QUERY_MAX_NOTE_CHARS = 16_000
+const LOCAL_QUERY_MAX_TOTAL_CHARS = 48_000
 
 type ImportedFileResult = {
   clientId: string
@@ -605,7 +608,27 @@ export default function Home() {
       }))
     )
 
-    return notes.filter((note) => note.content.trim().length > 0)
+    const limited: Array<{ slug: string; content: string }> = []
+    let usedChars = 0
+
+    for (const note of notes) {
+      const trimmed = note.content.trim()
+      if (!trimmed) continue
+      if (limited.length >= LOCAL_QUERY_MAX_NOTES) break
+
+      const remaining = Math.max(0, LOCAL_QUERY_MAX_TOTAL_CHARS - usedChars)
+      if (remaining <= 0) break
+
+      const allowedChars = Math.min(LOCAL_QUERY_MAX_NOTE_CHARS, remaining)
+      const clipped = trimmed.length > allowedChars
+        ? `${trimmed.slice(0, allowedChars)}\n\n[Truncated for query payload limits]`
+        : trimmed
+
+      limited.push({ slug: note.slug, content: clipped })
+      usedChars += clipped.length
+    }
+
+    return limited
   }, [])
 
   // Load custom presets list for sidebar compile selector

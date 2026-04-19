@@ -116,8 +116,7 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryCompl
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-
-      const data = await res.json() as { answer?: string; sources?: string[]; error?: string }
+      const data = await res.json().catch(() => ({})) as { answer?: string; sources?: string[]; error?: string }
 
       if (!res.ok) {
         setError(data.error ?? 'Query failed')
@@ -133,7 +132,12 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryCompl
       onQueryInsights?.(question, sources)
       onQueryComplete?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error — could not reach query API')
+      const msg = err instanceof Error ? err.message : 'Network error — could not reach query API'
+      if (msg.toLowerCase().includes('failed to fetch')) {
+        setError('Network error — request failed. Try again; if it persists, your query context may be too large.')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
