@@ -3,6 +3,10 @@ import type { LLMProvider } from './LLMProvider'
 import type { Conventions } from '@/lib/conventions/types'
 import { buildSystemPrompt } from '@/lib/conventions/defaults'
 
+const EMBEDDING_MODEL = 'text-embedding-3-small'
+// Conservative char chunk to stay comfortably under the model input token limit.
+const EMBEDDING_CHUNK_CHARS = 24_000
+
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI
   private compilationModel: string
@@ -73,12 +77,50 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async embed(text: string): Promise<number[]> {
+    const chunks = splitEmbeddingText(text)
     const response = await this.client.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: text,
+      model: EMBEDDING_MODEL,
+      input: chunks.length === 1 ? chunks[0] : chunks,
     })
-    return response.data[0].embedding
+    if (!Array.isArray(response.data) || response.data.length === 0) {
+      throw new Error('No embedding returned by OpenAI')
+    }
+    if (response.data.length === 1) return response.data[0].embedding
+    return averageEmbeddings(response.data.map((d) => d.embedding))
   }
 
-  get embeddingModel(): string { return 'text-embedding-3-small' }
+  get embeddingModel(): string { return EMBEDDING_MODEL }
+}
+
+function splitEmbeddingText(text: string): string[] {
+  const clean = text.trim()
+  if (!clean) return [' ']
+  if (clean.length <= EMBEDDING_CHUNK_CHARS) return [clean]
+
+  const chunks: string[] = []
+  let start = 0
+  while (start < clean.length) {
+    let end = Math.min(clean.length, start + EMBEDDING_CHUNK_CHARS)
+    if (end < clean.length) {
+      const boundary = clean.lastIndexOf('\n', end)
+      if (boundary > start + 1000) end = boundary
+    }
+    const piece = clean.slice(start, end).trim()
+    if (piece) chunks.push(piece)
+    start = end
+  }
+  return chunks.length > 0 ? chunks : [' ']
+}
+
+function averageEmbeddings(vectors: number[][]): number[] {
+  const dims = vectors[0]?.length ?? 0
+  if (dims === 0) throw new Error('Invalid embedding vector from OpenAI')
+  const out = new Array<number>(dims).fill(0)
+
+  for (const v of vectors) {
+    if (v.length !== dims) throw new Error('Embedding dimension mismatch from OpenAI')
+    for (let i = 0; i < dims; i++) out[i] += v[i]
+  }
+  for (let i = 0; i < dims; i++) out[i] /= vectors.length
+  return out
 }

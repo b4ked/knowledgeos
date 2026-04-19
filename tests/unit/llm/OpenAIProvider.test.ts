@@ -2,27 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 import type { LLMProvider } from '@/lib/llm/LLMProvider'
 
-const mockCreate = vi.fn()
+const mockChatCreate = vi.fn()
+const mockEmbeddingCreate = vi.fn()
 
 vi.mock('openai', () => ({
   default: vi.fn(() => ({
-    chat: { completions: { create: mockCreate } },
+    chat: { completions: { create: mockChatCreate } },
+    embeddings: { create: mockEmbeddingCreate },
   })),
 }))
 
 import { OpenAIProvider } from '@/lib/llm/OpenAIProvider'
 
 describe('OpenAIProvider', () => {
-  beforeEach(() => mockCreate.mockClear())
+  beforeEach(() => {
+    mockChatCreate.mockClear()
+    mockEmbeddingCreate.mockClear()
+  })
   it('sends correct message structure to OpenAI', async () => {
-    mockCreate.mockResolvedValueOnce({
+    mockChatCreate.mockResolvedValueOnce({
       choices: [{ message: { content: '## Overview\n\n[[Concept]]' } }],
     })
 
     const provider = new OpenAIProvider('sk-openai-test')
     await provider.compile(['Source content'], DEFAULT_CONVENTIONS)
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockChatCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: expect.any(String),
         messages: expect.arrayContaining([
@@ -34,7 +39,7 @@ describe('OpenAIProvider', () => {
   })
 
   it('returns compiled content string', async () => {
-    mockCreate.mockResolvedValueOnce({
+    mockChatCreate.mockResolvedValueOnce({
       choices: [{ message: { content: '# Compiled\n\n[[Topic]]' } }],
     })
 
@@ -46,34 +51,34 @@ describe('OpenAIProvider', () => {
   })
 
   it('includes all sources in the user message', async () => {
-    mockCreate.mockResolvedValueOnce({
+    mockChatCreate.mockResolvedValueOnce({
       choices: [{ message: { content: 'compiled' } }],
     })
 
     const provider = new OpenAIProvider('sk-openai-test')
     await provider.compile(['Source A', 'Source B'], DEFAULT_CONVENTIONS)
 
-    const call = mockCreate.mock.calls[0][0]
+    const call = mockChatCreate.mock.calls[0][0]
     const userMsg = call.messages.find((m: { role: string }) => m.role === 'user')
     expect(userMsg.content).toContain('Source A')
     expect(userMsg.content).toContain('Source B')
   })
 
   it('uses compilationModel option when provided', async () => {
-    mockCreate.mockResolvedValueOnce({
+    mockChatCreate.mockResolvedValueOnce({
       choices: [{ message: { content: 'ok' } }],
     })
 
     const provider = new OpenAIProvider('sk-openai-test', { compilationModel: 'gpt-4o-mini' })
     await provider.compile(['content'], DEFAULT_CONVENTIONS)
 
-    expect(mockCreate).toHaveBeenCalledWith(
+    expect(mockChatCreate).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gpt-4o-mini' })
     )
   })
 
   it('throws typed error on API failure', async () => {
-    mockCreate.mockRejectedValueOnce(new Error('insufficient_quota'))
+    mockChatCreate.mockRejectedValueOnce(new Error('insufficient_quota'))
 
     const provider = new OpenAIProvider('sk-openai-test')
 
@@ -85,5 +90,24 @@ describe('OpenAIProvider', () => {
   it('OpenAIProvider satisfies LLMProvider interface (type check)', () => {
     const provider: LLMProvider = new OpenAIProvider('sk-openai-test')
     expect(provider).toBeDefined()
+  })
+
+  it('chunks long embedding input and averages chunk vectors', async () => {
+    const longText = 'a'.repeat(50_000)
+    mockEmbeddingCreate.mockResolvedValueOnce({
+      data: [
+        { embedding: [1, 3] },
+        { embedding: [3, 5] },
+      ],
+    })
+
+    const provider = new OpenAIProvider('sk-openai-test')
+    const result = await provider.embed(longText)
+
+    expect(mockEmbeddingCreate).toHaveBeenCalledTimes(1)
+    const call = mockEmbeddingCreate.mock.calls[0][0]
+    expect(Array.isArray(call.input)).toBe(true)
+    expect(call.input.length).toBeGreaterThan(1)
+    expect(result).toEqual([2, 4])
   })
 })
