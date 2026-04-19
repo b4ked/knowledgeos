@@ -122,6 +122,7 @@ export default function Home() {
   const selectAllRef = useRef<HTMLInputElement>(null)
   const graphDataRef = useRef<GraphData>({ nodes: [], edges: [] })
   const loadGraphVersion = useRef(0)
+  const loadNotesVersion = useRef(0)
   const isResizingChat = useRef(false)
   const isResizingSidebar = useRef(false)
   const resizeStartX = useRef(0)
@@ -134,6 +135,7 @@ export default function Home() {
   const presetOptions = [...Object.keys(BUILT_IN_PRESETS), ...sidebarPresets]
   const clearVaultVisualState = useCallback((nextFolder: Folder = 'wiki') => {
     loadGraphVersion.current += 1
+    loadNotesVersion.current += 1
     setFolder(nextFolder)
     setNotes([])
     setSelectedNote(null)
@@ -254,7 +256,15 @@ export default function Home() {
         const restored = await restoreSavedVaultFolder({ requestPermission: true }).catch(() => null)
         if (restored) nextAdapter = new BrowserVaultAdapter(restored)
       }
-      browserAdapterRef.current = nextAdapter ?? browserAdapterRef.current
+      if (nextAdapter) {
+        try {
+          await nextAdapter.ensureDirectories()
+          browserAdapterRef.current = nextAdapter
+        } catch {
+          nextAdapter = null
+          browserAdapterRef.current = null
+        }
+      }
     } else if (adapter) {
       browserAdapterRef.current = adapter
     }
@@ -283,26 +293,26 @@ export default function Home() {
     resetVaultUi('wiki')
     setVaultMode(mode)
     setLocalHandleMissing(mode === 'local' && !nextAdapter)
-
-    if (showGraph) {
-      setGraphLoading(true)
-      setTimeout(() => { void loadGraph() }, 50)
-    }
   }
 
   // Load vault mode preference for authenticated users
   useEffect(() => {
-    if (sessionStatus === 'loading') return
+    if (sessionStatus === 'loading') {
+      setVaultModeLoaded(false)
+      return
+    }
 
     let cancelled = false
+    setVaultModeLoaded(false)
 
     async function loadInitialVaultMode() {
       let nextMode: VaultMode = 'remote'
 
       if (sessionStatus === 'authenticated') {
+        nextMode = 'cloud'
         try {
           const active = window.localStorage.getItem('knowledgeos.activeVaultMode')
-          if (active === 'cloud' || active === 'local' || active === 'remote') {
+          if (active === 'cloud' || active === 'local') {
             nextMode = active
           }
         } catch {
@@ -325,28 +335,34 @@ export default function Home() {
           // Ignore storage failures
         }
 
-        if (nextMode === 'remote') {
-          try {
-            const response = await fetch('/api/preferences')
-            if (response.ok) {
-              const prefs = await response.json() as { vaultMode?: string }
-              if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
-                nextMode = prefs.vaultMode
-              }
+        try {
+          const response = await fetch('/api/preferences')
+          if (response.ok) {
+            const prefs = await response.json() as { vaultMode?: string }
+            if (prefs.vaultMode === 'cloud' || prefs.vaultMode === 'local') {
+              nextMode = prefs.vaultMode
             }
-          } catch {
-            // Keep remote default if preferences cannot be loaded
           }
+        } catch {
+          // Keep cloud default if preferences cannot be loaded
         }
       }
 
       if (nextMode === 'local') {
-        const handle = await restoreSavedVaultFolder().catch(() => null)
+        const handle = await restoreSavedVaultFolder({ requestPermission: true }).catch(() => null)
         if (!cancelled && handle) {
-          browserAdapterRef.current = new BrowserVaultAdapter(handle)
-          setLocalHandleMissing(false)
+          const adapter = new BrowserVaultAdapter(handle)
+          try {
+            await adapter.ensureDirectories()
+            browserAdapterRef.current = adapter
+            setLocalHandleMissing(false)
+          } catch {
+            browserAdapterRef.current = null
+            setLocalHandleMissing(true)
+          }
         } else if (!cancelled) {
           setLocalHandleMissing(true)
+          browserAdapterRef.current = null
         }
       } else if (!cancelled) {
         setLocalHandleMissing(false)
@@ -589,28 +605,33 @@ export default function Home() {
   }, [])
 
   const loadNotes = useCallback(async (f: Folder) => {
+    const version = ++loadNotesVersion.current
+    const modeAtStart = vaultMode
     setLoading(true)
     try {
-      if (vaultMode === 'local') {
-        if (!browserAdapterRef.current) {
-          setNotes([])
+      if (modeAtStart === 'local') {
+        const adapter = browserAdapterRef.current
+        if (!adapter) {
+          if (version === loadNotesVersion.current) setNotes([])
           return
         }
-        const data = (await browserAdapterRef.current.listNotes(f)).filter(
+        const data = (await adapter.listNotes(f)).filter(
           (note) => note.filename !== '.keep' && !note.slug.endsWith('/.keep') && note.slug !== '.keep'
         )
-        setNotes(data)
+        if (version === loadNotesVersion.current) setNotes(data)
       } else {
         const res = await fetch(`/api/notes?folder=${f}`)
+        if (version !== loadNotesVersion.current) return
         if (res.ok) {
           const data = await res.json() as NoteMetadata[]
-          setNotes(data)
+          if (version === loadNotesVersion.current) setNotes(data)
+        } else if (version === loadNotesVersion.current) {
+          setNotes([])
         }
       }
     } finally {
-      setLoading(false)
+      if (version === loadNotesVersion.current) setLoading(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultMode])
 
   const loadGraph = useCallback(async () => {
@@ -666,13 +687,14 @@ export default function Home() {
   }, [vaultMode])
 
   useEffect(() => {
+    if (!vaultModeLoaded) return
     loadNotes(folder)
     setSelectedNote(null)
     setNoteContent('')
     setPanel('viewer')
     setCheckedSlugs(new Set())
     setCompileError(null)
-  }, [folder, loadNotes, vaultMode])
+  }, [folder, loadNotes, vaultMode, vaultModeLoaded])
 
   useEffect(() => {
     if (!showGraph) return
@@ -688,6 +710,7 @@ export default function Home() {
     setLocalHandleMissing(false)
     resetVaultUi('wiki')
     setVaultMode('remote')
+    setVaultModeLoaded(true)
   }, [sessionStatus, resetVaultUi])
 
   useEffect(() => {

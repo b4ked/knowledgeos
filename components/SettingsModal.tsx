@@ -52,6 +52,7 @@ export default function SettingsModal({
   onLocalClearRag,
 }: SettingsModalProps) {
   const { data: session, status: sessionStatus } = useSession()
+  const localVaultLabel = browserAdapter?.getHandle().name ?? ''
   const [rawPath, setRawPath] = useState('')
   const [wikiPath, setWikiPath] = useState('')
   const [presetsPath, setPresetsPath] = useState('')
@@ -341,6 +342,15 @@ export default function SettingsModal({
                           >
                             {browserAdapter ? 'Choose a different local folder' : 'Pick local folder'}
                           </button>
+                          {browserAdapter && (
+                            <div className="rounded border border-gray-700 bg-gray-800 px-3 py-2">
+                              <p className="text-[11px] text-gray-400">Selected local vault folder</p>
+                              <p className="mt-0.5 text-xs font-mono text-emerald-300">{localVaultLabel || '(unknown folder)'}</p>
+                              <p className="mt-1 text-[11px] text-gray-500">
+                                Browser security does not expose the absolute filesystem path.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-amber-500">
