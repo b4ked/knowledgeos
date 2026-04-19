@@ -304,6 +304,15 @@ export default function Home() {
 
     let cancelled = false
     setVaultModeLoaded(false)
+    loadNotesVersion.current += 1
+    loadGraphVersion.current += 1
+    // Clear previous vault data immediately while the new vault mode resolves.
+    setNotes([])
+    setGraphData({ nodes: [], edges: [] })
+    graphDataRef.current = { nodes: [], edges: [] }
+    setSelectedNote(null)
+    setNoteContent('')
+    setCheckedSlugs(new Set())
 
     async function loadInitialVaultMode() {
       let nextMode: VaultMode = 'remote'
@@ -369,6 +378,8 @@ export default function Home() {
       }
 
       if (!cancelled) {
+        // Apply the resolved vault mode onto a clean UI state.
+        resetVaultUi('wiki')
         setVaultMode(nextMode)
         setVaultModeLoaded(true)
         try {
@@ -608,6 +619,7 @@ export default function Home() {
     const version = ++loadNotesVersion.current
     const modeAtStart = vaultMode
     setLoading(true)
+    if (version === loadNotesVersion.current) setNotes([])
     try {
       if (modeAtStart === 'local') {
         const adapter = browserAdapterRef.current
