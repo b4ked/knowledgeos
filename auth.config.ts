@@ -10,6 +10,7 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id as string
         token.plan = (user as { plan?: string }).plan ?? "free"
+        token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false
       }
       return token
     },
@@ -17,6 +18,7 @@ export const authConfig: NextAuthConfig = {
       if (token) {
         session.user.id = token.id as string
         ;(session.user as { plan?: string }).plan = token.plan as string
+        ;(session.user as { isAdmin?: boolean }).isAdmin = Boolean(token.isAdmin)
       }
       return session
     },

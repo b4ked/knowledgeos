@@ -20,7 +20,12 @@ export async function compile(
   conventions: Partial<Conventions> = {},
   rawPath?: string,
   wikiPath?: string,
-  llmRuntime?: { compileMaxTokens?: number; queryMaxTokens?: number },
+  llmRuntime?: {
+    compileMaxTokens?: number
+    queryMaxTokens?: number
+    compilationModel?: string
+    queryModel?: string
+  },
 ): Promise<CompileResult> {
   // merged is used for buildSystemPrompt — defaults fill missing fields
   // getLLMProvider receives only user-supplied conventions so the LLM_PROVIDER

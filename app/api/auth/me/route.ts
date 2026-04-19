@@ -12,6 +12,7 @@ export async function GET() {
       email: session.user.email,
       name: session.user.name,
       plan: (session.user as { plan?: string }).plan ?? "free",
+      isAdmin: Boolean((session.user as { isAdmin?: boolean }).isAdmin),
     },
   })
 }

@@ -32,6 +32,7 @@ export default function UserMenu() {
   }
 
   const plan = (session.user as { plan?: string }).plan ?? "free"
+  const isAdmin = Boolean((session.user as { isAdmin?: boolean }).isAdmin)
 
   return (
     <div className="relative">
@@ -73,6 +74,15 @@ export default function UserMenu() {
             >
               Usage
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-xs text-amber-300 hover:text-amber-200 hover:bg-gray-800 transition-colors"
+              >
+                Admin dashboard
+              </Link>
+            )}
             <div className="border-t border-gray-800 mt-1 pt-1">
               <button
                 onClick={async () => {

@@ -45,6 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           plan: user.plan,
+          isAdmin: user.isAdmin,
         }
       },
     }),
@@ -65,13 +66,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               name: user.name ?? null,
               emailVerified: true, // GitHub verifies email
               plan: "free",
+              isAdmin: false,
             })
             .returning()
           user.id = created.id
           ;(user as { plan?: string }).plan = "free"
+          ;(user as { isAdmin?: boolean }).isAdmin = false
         } else {
           user.id = existing.id
           ;(user as { plan?: string }).plan = existing.plan
+          ;(user as { isAdmin?: boolean }).isAdmin = existing.isAdmin
         }
       }
       return true
@@ -80,6 +84,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id as string
         token.plan = (user as { plan?: string }).plan ?? "free"
+        token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false
       }
       return token
     },
@@ -87,6 +92,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token) {
         session.user.id = token.id as string
         ;(session.user as { plan?: string }).plan = token.plan as string
+        ;(session.user as { isAdmin?: boolean }).isAdmin = Boolean(token.isAdmin)
       }
       return session
     },

@@ -5,6 +5,10 @@ export interface VaultSettings {
   rawPath?: string
   wikiPath?: string
   presetsPath?: string
+  globalCompilationModel?: string
+  globalQueryModel?: string
+  globalImageModel?: string
+  enforceGlobalModels?: boolean
   compileMaxOutputTokens?: number
   queryMaxOutputTokens?: number
   imageExtractMaxOutputTokens?: number

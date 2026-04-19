@@ -190,12 +190,22 @@ app.post('/api/compile', async (req, res) => {
   }
   const vaultPath = getVaultPath()
   const { settings, admin } = await getRuntimeSettings()
+  const requested = conventions ?? {}
+  const effectiveConventions = admin.enforceGlobalModels
+    ? {
+        ...requested,
+        compilationModel: admin.globalCompilationModel,
+        queryModel: admin.globalQueryModel,
+      }
+    : requested
   const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
   const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
   try {
-    const result = await compile(notePaths, outputFilename, vaultPath, conventions ?? {}, rawPath, wikiPath, {
+    const result = await compile(notePaths, outputFilename, vaultPath, effectiveConventions, rawPath, wikiPath, {
       compileMaxTokens: admin.compileMaxOutputTokens,
       queryMaxTokens: admin.queryMaxOutputTokens,
+      compilationModel: admin.globalCompilationModel,
+      queryModel: admin.globalQueryModel,
     })
     res.json(result)
   } catch (err) {
@@ -215,6 +225,7 @@ app.post('/api/query', async (req, res) => {
   const llm = getLLMProvider(undefined, {
     compileMaxTokens: admin.compileMaxOutputTokens,
     queryMaxTokens: admin.queryMaxOutputTokens,
+    queryModel: admin.globalQueryModel,
   })
   const meta = await readMeta(vaultPath)
   const currentProvider = process.env.LLM_PROVIDER ?? 'anthropic'
@@ -246,6 +257,7 @@ app.post('/api/embeddings/index', async (req, res) => {
   const llm = getLLMProvider(undefined, {
     compileMaxTokens: admin.compileMaxOutputTokens,
     queryMaxTokens: admin.queryMaxOutputTokens,
+    queryModel: admin.globalQueryModel,
   })
   const provider = process.env.LLM_PROVIDER ?? 'anthropic'
   const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
@@ -276,6 +288,7 @@ app.post('/api/embeddings/reindex', async (_req, res) => {
   const llm = getLLMProvider(undefined, {
     compileMaxTokens: admin.compileMaxOutputTokens,
     queryMaxTokens: admin.queryMaxOutputTokens,
+    queryModel: admin.globalQueryModel,
   })
   const provider = process.env.LLM_PROVIDER ?? 'anthropic'
   const model = provider === 'openai' ? 'text-embedding-3-small' : 'voyage-3-lite'
@@ -353,6 +366,10 @@ app.post('/api/settings', async (req, res) => {
     rawPath,
     wikiPath,
     presetsPath,
+    globalCompilationModel,
+    globalQueryModel,
+    globalImageModel,
+    enforceGlobalModels,
     compileMaxOutputTokens,
     queryMaxOutputTokens,
     imageExtractMaxOutputTokens,
@@ -365,6 +382,10 @@ app.post('/api/settings', async (req, res) => {
     rawPath?: string
     wikiPath?: string
     presetsPath?: string
+    globalCompilationModel?: string
+    globalQueryModel?: string
+    globalImageModel?: string
+    enforceGlobalModels?: boolean
     compileMaxOutputTokens?: number
     queryMaxOutputTokens?: number
     imageExtractMaxOutputTokens?: number
@@ -376,6 +397,10 @@ app.post('/api/settings', async (req, res) => {
   }
 
   const normalized = normalizeRuntimeAdminSettings({
+    globalCompilationModel,
+    globalQueryModel,
+    globalImageModel,
+    enforceGlobalModels,
     compileMaxOutputTokens,
     queryMaxOutputTokens,
     imageExtractMaxOutputTokens,
@@ -558,6 +583,7 @@ async function extractMarkdownFromFile(filePath: string): Promise<{ ok: boolean;
 async function extractImageWithOpenAI(
   filePath: string,
   mimeType: string | undefined,
+  model: string,
   maxOutputTokens: number,
 ): Promise<{ ok: boolean; markdown?: string; error?: string; inputTokens?: number; outputTokens?: number }> {
   const key = process.env.OPENAI_API_KEY
@@ -568,7 +594,6 @@ async function extractImageWithOpenAI(
     const client = new OpenAI({ apiKey: key })
     const bytes = await fs.readFile(filePath)
     const effectiveMime = mimeType || 'image/png'
-    const model = process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-4o-mini'
     const prompt = [
       'Extract any visible text and describe the image in detail for a knowledge base.',
       'Return markdown with these headings in order:',
@@ -698,7 +723,12 @@ async function processUploadFile(
     const extracted = await extractMarkdownFromFile(tmpPath)
     const useImageEnrichment = admin.enableOpenAIImageEnrichment && IMAGE_UPLOAD_EXT.has(safeExt)
     const vision = useImageEnrichment
-      ? await extractImageWithOpenAI(tmpPath, mimeType, admin.imageExtractMaxOutputTokens)
+      ? await extractImageWithOpenAI(
+          tmpPath,
+          mimeType,
+          admin.globalImageModel,
+          admin.imageExtractMaxOutputTokens,
+        )
       : { ok: false as const }
 
     const parts: string[] = []

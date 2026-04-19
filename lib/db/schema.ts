@@ -7,11 +7,29 @@ export const users = pgTable("users", {
   name: text("name"),
   emailVerified: boolean("email_verified").default(false).notNull(),
   plan: text("plan").default("free").notNull(),
+  isAdmin: boolean("is_admin").default(false).notNull(),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const platformSettings = pgTable('platform_settings', {
+  id: integer('id').primaryKey().notNull().default(1),
+  globalCompilationModel: text('global_compilation_model').default('gpt-4o').notNull(),
+  globalQueryModel: text('global_query_model').default('gpt-4o').notNull(),
+  globalImageModel: text('global_image_model').default('gpt-4o-mini').notNull(),
+  enforceGlobalModels: boolean('enforce_global_models').default(true).notNull(),
+  compileMaxOutputTokens: integer('compile_max_output_tokens').default(8192).notNull(),
+  queryMaxOutputTokens: integer('query_max_output_tokens').default(2048).notNull(),
+  imageExtractMaxOutputTokens: integer('image_extract_max_output_tokens').default(1536).notNull(),
+  enableOpenAIImageEnrichment: boolean('enable_openai_image_enrichment').default(false).notNull(),
+  ingestionMaxFilesPerJob: integer('ingestion_max_files_per_job').default(200).notNull(),
+  ingestionMaxFileSizeMb: integer('ingestion_max_file_size_mb').default(50).notNull(),
+  ingestionRequestsPerMinute: integer('ingestion_requests_per_minute').default(120).notNull(),
+  ingestionMaxConcurrentJobsPerOwner: integer('ingestion_max_concurrent_jobs_per_owner').default(2).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
 export const emailVerificationTokens = pgTable("email_verification_tokens", {

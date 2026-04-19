@@ -6,6 +6,8 @@ import type { Conventions } from '@/lib/conventions/types'
 interface ProviderRuntimeOptions {
   compileMaxTokens?: number
   queryMaxTokens?: number
+  compilationModel?: string
+  queryModel?: string
 }
 
 export function getLLMProvider(
@@ -19,8 +21,8 @@ export function getLLMProvider(
     const key = process.env.OPENAI_API_KEY
     if (!key) throw new Error('OPENAI_API_KEY is not set')
     return new OpenAIProvider(key, {
-      compilationModel: conventions?.compilationModel,
-      queryModel: conventions?.queryModel,
+      compilationModel: runtime?.compilationModel ?? conventions?.compilationModel,
+      queryModel: runtime?.queryModel ?? conventions?.queryModel,
       compileMaxTokens: runtime?.compileMaxTokens,
       queryMaxTokens: runtime?.queryMaxTokens,
     })
@@ -30,8 +32,8 @@ export function getLLMProvider(
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
   return new AnthropicProvider(key, {
-    compilationModel: conventions?.compilationModel,
-    queryModel: conventions?.queryModel,
+    compilationModel: runtime?.compilationModel ?? conventions?.compilationModel,
+    queryModel: runtime?.queryModel ?? conventions?.queryModel,
     compileMaxTokens: runtime?.compileMaxTokens,
     queryMaxTokens: runtime?.queryMaxTokens,
   })

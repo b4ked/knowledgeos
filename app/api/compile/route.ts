@@ -12,7 +12,7 @@ import { upsertUserEmbedding } from '@/lib/rag/cloudStore'
 import { hashContent } from '@/lib/rag/hash'
 import { checkAndIncrementUsage } from '@/lib/usage'
 import { parseNoteFrontmatter, stringifyWithFrontmatter } from '@/lib/vault/frontmatter'
-import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
+import { readPlatformSettings } from '@/lib/admin/platformSettings'
 
 export async function POST(request: Request) {
   const body = await request.json() as {
@@ -31,10 +31,17 @@ export async function POST(request: Request) {
   const session = await auth()
   const userId = session?.user?.id ?? undefined
   const vaultMode = await getServerVaultMode(userId)
-  const merged = { ...DEFAULT_CONVENTIONS, ...(conventions ?? {}) }
-  const settings = await readSettings()
-  const admin = normalizeRuntimeAdminSettings(settings)
-  const llm = getLLMProvider(conventions ?? {}, {
+  const admin = await readPlatformSettings()
+  const requested = conventions ?? {}
+  const effectiveConventions = admin.enforceGlobalModels
+    ? {
+        ...requested,
+        compilationModel: admin.globalCompilationModel,
+        queryModel: admin.globalQueryModel,
+      }
+    : requested
+  const merged = { ...DEFAULT_CONVENTIONS, ...effectiveConventions }
+  const llm = getLLMProvider(effectiveConventions, {
     compileMaxTokens: admin.compileMaxOutputTokens,
     queryMaxTokens: admin.queryMaxOutputTokens,
   })
@@ -128,6 +135,7 @@ export async function POST(request: Request) {
     ? path.resolve(process.env.VAULT_PATH)
     : path.resolve('./vault')
 
+  const settings = await readSettings()
   const rawPath = settings.rawPath ? path.resolve(settings.rawPath) : undefined
   const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : undefined
 
@@ -136,7 +144,7 @@ export async function POST(request: Request) {
       notePaths!,
       outputFilename,
       vaultPath,
-      conventions ?? {},
+      effectiveConventions,
       rawPath,
       wikiPath,
       {

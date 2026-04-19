@@ -1,6 +1,5 @@
 import { getAnyVpsConfig } from '@/lib/vpsProxy'
-import { readSettings } from '@/lib/vault/settings'
-import { normalizeRuntimeAdminSettings } from '@/lib/admin/runtimeSettings'
+import { readPlatformSettings } from '@/lib/admin/platformSettings'
 
 export const maxDuration = 60
 
@@ -53,7 +52,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const files = await readPayload(request)
-  const admin = normalizeRuntimeAdminSettings(await readSettings())
+  const admin = await readPlatformSettings()
 
   if (files.length === 0) {
     return Response.json({ error: 'No files provided' }, { status: 400 })

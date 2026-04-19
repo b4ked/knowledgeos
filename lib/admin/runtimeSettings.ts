@@ -1,6 +1,10 @@
 import type { VaultSettings } from '@/lib/vault/settings'
 
 export interface RuntimeAdminSettings {
+  globalCompilationModel: string
+  globalQueryModel: string
+  globalImageModel: string
+  enforceGlobalModels: boolean
   compileMaxOutputTokens: number
   queryMaxOutputTokens: number
   imageExtractMaxOutputTokens: number
@@ -12,6 +16,10 @@ export interface RuntimeAdminSettings {
 }
 
 const DEFAULTS: RuntimeAdminSettings = {
+  globalCompilationModel: 'gpt-4o',
+  globalQueryModel: 'gpt-4o',
+  globalImageModel: 'gpt-4o-mini',
+  enforceGlobalModels: true,
   compileMaxOutputTokens: 8192,
   queryMaxOutputTokens: 2048,
   imageExtractMaxOutputTokens: 1536,
@@ -32,8 +40,19 @@ function clampInt(value: unknown, fallback: number, min: number, max: number): n
   return Math.min(max, Math.max(min, n))
 }
 
+function clampString(value: unknown, fallback: string, maxLen: number): string {
+  if (typeof value !== 'string') return fallback
+  const v = value.trim()
+  if (!v) return fallback
+  return v.slice(0, maxLen)
+}
+
 export function normalizeRuntimeAdminSettings(settings?: Partial<VaultSettings> | null): RuntimeAdminSettings {
   return {
+    globalCompilationModel: clampString(settings?.globalCompilationModel, DEFAULTS.globalCompilationModel, 100),
+    globalQueryModel: clampString(settings?.globalQueryModel, DEFAULTS.globalQueryModel, 100),
+    globalImageModel: clampString(settings?.globalImageModel, DEFAULTS.globalImageModel, 100),
+    enforceGlobalModels: settings?.enforceGlobalModels ?? DEFAULTS.enforceGlobalModels,
     compileMaxOutputTokens: clampInt(settings?.compileMaxOutputTokens, DEFAULTS.compileMaxOutputTokens, 256, 64000),
     queryMaxOutputTokens: clampInt(settings?.queryMaxOutputTokens, DEFAULTS.queryMaxOutputTokens, 128, 16000),
     imageExtractMaxOutputTokens: clampInt(

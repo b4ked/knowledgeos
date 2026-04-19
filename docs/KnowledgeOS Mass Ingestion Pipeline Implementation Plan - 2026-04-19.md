@@ -31,6 +31,23 @@ Build a production-ready bulk ingestion pipeline so admins/users can quickly imp
   - `app/api/ingestion/jobs/[id]/route.ts`
   - `app/api/ingestion/jobs/[id]/[action]/route.ts`
 - Completed: frontend upload switched from sequential one-file requests to batched upload request (`app/page.tsx`).
+- Completed: moved global ingestion/output/model controls from user settings into admin-only platform controls:
+  - DB schema: `users.is_admin`, new `platform_settings` table
+  - Admin APIs:
+    - `GET /api/admin/users`
+    - `PATCH /api/admin/users/:id`
+    - `GET/PUT /api/admin/platform-settings`
+    - `POST /api/admin/bootstrap` (self-promote when no admin exists)
+  - Admin UI:
+    - `/admin` dashboard with:
+      - all users list + plan/admin role management
+      - global chat/compile/image model settings
+      - global token output limits
+      - global ingestion limits
+- Completed: session/auth now includes admin role in JWT/session payloads and UI (`auth.ts`, `auth.config.ts`, `types/next-auth.d.ts`, `components/UserMenu.tsx`).
+- Completed: compile/query/upload now resolve global platform settings so admin controls apply across users.
+- Completed: existing personal settings modal no longer exposes global ingestion/output controls (admin dashboard is source of truth).
+- Completed: admin user accounts promoted for owner operation.
 
 ## Validation Completed (2026-04-19)
 - Unit tests:
@@ -43,6 +60,12 @@ Build a production-ready bulk ingestion pipeline so admins/users can quickly imp
   - created ingestion job with one file
   - started job and fetched status
   - observed terminal status `completed` with `processed=1`, `success=1`
+- Admin controls validation:
+  - `npm run build` passes with new admin routes/page and platform settings wiring
+  - targeted tests pass:
+    - `tests/unit/admin/runtimeSettings.test.ts`
+    - `tests/unit/llm/getLLMProvider.test.ts`
+  - backend health check passes after settings changes
 - Full unit test suite status:
   - `npm run test` currently has pre-existing unrelated failures in `tests/unit/api/*` and `tests/unit/graph/parseLinks.test.ts` (module resolution + existing assertion mismatch), while modified feature areas pass targeted tests and build/typecheck.
 
