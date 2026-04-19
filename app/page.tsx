@@ -564,41 +564,54 @@ export default function Home() {
       throw new Error('Reconnect your local vault folder first')
     }
 
-    const embeddingRes = await fetch('/api/embeddings/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question }),
-    })
-    const embeddingData = await embeddingRes.json() as { embedding?: number[]; error?: string }
-    if (!embeddingRes.ok || !embeddingData.embedding) {
-      throw new Error(embeddingData.error ?? 'Could not search the local RAG index')
+    let slugs: string[]
+    let questionEmbedding: number[] | null = null
+
+    try {
+      const embeddingRes = await fetch('/api/embeddings/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      })
+      const embeddingData = await embeddingRes.json().catch(() => ({})) as { embedding?: number[]; error?: string }
+      if (embeddingRes.ok && embeddingData.embedding) {
+        questionEmbedding = embeddingData.embedding
+      }
+    } catch {
+      // Fall through to recent-notes fallback.
     }
 
-    const questionEmbedding = embeddingData.embedding
-    const currentGraph = graphDataRef.current
-
-    // Use graph-aware retrieval if graph has edges, otherwise fall back to standard
-    let slugs: string[]
-    if (currentGraph.edges.length > 0) {
-      try {
-        const { graphAwareRetrieve } = await import('@/lib/rag/graphAwareRetrieve')
-        const entries = await listLocalRagEntries(adapter)
-        const results = graphAwareRetrieve(questionEmbedding, entries, currentGraph, {
-          topK: 5,
-          semanticWeight: 0.7,
-          minScore: 0.05,
-        })
-        slugs = results.map((r) => r.slug)
-      } catch {
-        // Fall back to standard retrieval
+    if (questionEmbedding) {
+      const currentGraph = graphDataRef.current
+      if (currentGraph.edges.length > 0) {
+        try {
+          const { graphAwareRetrieve } = await import('@/lib/rag/graphAwareRetrieve')
+          const entries = await listLocalRagEntries(adapter)
+          const results = graphAwareRetrieve(questionEmbedding, entries, currentGraph, {
+            topK: 5,
+            semanticWeight: 0.7,
+            minScore: 0.05,
+          })
+          slugs = results.map((r) => r.slug)
+        } catch {
+          // Fall back to standard retrieval
+          slugs = await retrieveLocalRagSlugs(adapter, questionEmbedding)
+        }
+      } else {
         slugs = await retrieveLocalRagSlugs(adapter, questionEmbedding)
       }
+      if (slugs.length === 0) {
+        throw new Error('Local RAG index is empty. Open Settings and tokenise your wiki notes first.')
+      }
     } else {
-      slugs = await retrieveLocalRagSlugs(adapter, questionEmbedding)
-    }
-
-    if (slugs.length === 0) {
-      throw new Error('Local RAG index is empty. Open Settings and tokenise your wiki notes first.')
+      const recentWiki = await adapter.listNotes('wiki')
+      slugs = recentWiki
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 5)
+        .map((note) => note.slug)
+      if (slugs.length === 0) {
+        throw new Error('No wiki notes are available for local chat context.')
+      }
     }
 
     const notes = await Promise.all(
