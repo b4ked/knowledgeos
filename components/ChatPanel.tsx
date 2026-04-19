@@ -74,6 +74,21 @@ interface ChatPanelProps {
   getLocalNotesForQuery?: (question: string) => Promise<Array<{ slug: string; content: string }>>
 }
 
+interface QueryPayload {
+  question: string
+  notes?: Array<{ slug: string; content: string }>
+}
+
+async function requestQuery(payload: QueryPayload): Promise<{ answer?: string; sources?: string[]; error?: string; ok: boolean }> {
+  const res = await fetch('/api/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({})) as { answer?: string; sources?: string[]; error?: string }
+  return { ...data, ok: res.ok }
+}
+
 export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryComplete, onQueryInsights, vaultMode = 'remote', getLocalNotesForQuery }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -107,18 +122,34 @@ export default function ChatPanel({ onSourceClick, onSourcesUpdate, onQueryCompl
     setLoading(true)
 
     try {
-      const body = vaultMode === 'local' && getLocalNotesForQuery
-        ? { question, notes: await getLocalNotesForQuery(question) }
-        : { question }
+      const localNotes = vaultMode === 'local' && getLocalNotesForQuery
+        ? await getLocalNotesForQuery(question)
+        : undefined
 
-      const res = await fetch('/api/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => ({})) as { answer?: string; sources?: string[]; error?: string }
+      const data = await requestQuery({ question, notes: localNotes })
+      if (!data.ok && localNotes && localNotes.length > 0) {
+        // If the initial local payload is still too large/unreliable, retry with minimal context.
+        const retryNotes = [{
+          slug: localNotes[0].slug,
+          content: localNotes[0].content.slice(0, 4000),
+        }]
+        const retry = await requestQuery({ question, notes: retryNotes })
+        if (!retry.ok) {
+          setError(retry.error ?? data.error ?? 'Query failed')
+          return
+        }
+        const retrySources = retry.sources ?? []
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: retry.answer ?? '', sources: retrySources },
+        ])
+        onSourcesUpdate?.(retrySources)
+        onQueryInsights?.(question, retrySources)
+        onQueryComplete?.()
+        return
+      }
 
-      if (!res.ok) {
+      if (!data.ok) {
         setError(data.error ?? 'Query failed')
         return
       }
