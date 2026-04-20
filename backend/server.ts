@@ -4,12 +4,8 @@ import path from 'path'
 import express from 'express'
 import cors from 'cors'
 import fs from 'fs/promises'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import os from 'os'
 import { randomUUID } from 'crypto'
-
-const execFileAsync = promisify(execFile)
 
 import { bearerAuth } from './middleware/auth.js'
 import { LocalVaultAdapter } from '../lib/vault/LocalVaultAdapter.js'
@@ -23,6 +19,7 @@ import { readSettings, writeSettings } from '../lib/vault/settings.js'
 import type { NoteFolder } from '../lib/vault/VaultAdapter.js'
 import type { Conventions } from '../lib/conventions/types.js'
 import { normalizeRuntimeAdminSettings } from '../lib/admin/runtimeSettings.js'
+import { extractMarkdownFromFile } from './uploadExtraction.js'
 
 // Load backend/.env.local — env vars are read lazily at request time so hoisting is fine
 const __filename = fileURLToPath(import.meta.url)
@@ -556,28 +553,6 @@ function estimateBase64Bytes(base64: string): number {
   const normalized = base64.replace(/\s+/g, '')
   const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0
   return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding)
-}
-
-async function extractMarkdownFromFile(filePath: string): Promise<{ ok: boolean; markdown?: string; error?: string }> {
-  const scriptPath = path.resolve(__dirname, 'scripts/markitdown_extract.py')
-  const pythonCmd = process.env.MARKITDOWN_PYTHON?.trim() || 'python3'
-
-  try {
-    const { stdout } = await execFileAsync(pythonCmd, [scriptPath, filePath], {
-      timeout: 60000,
-      maxBuffer: 5 * 1024 * 1024,
-    })
-    const parsed = JSON.parse(stdout.trim()) as { ok?: boolean; markdown?: string; error?: string }
-    if (!parsed.ok || !parsed.markdown) {
-      return { ok: false, error: parsed.error ?? 'Could not extract text from this file.' }
-    }
-    return { ok: true, markdown: parsed.markdown }
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : 'Could not extract text from this file.',
-    }
-  }
 }
 
 async function extractImageWithOpenAI(
