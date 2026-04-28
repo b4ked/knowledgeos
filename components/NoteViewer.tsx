@@ -21,7 +21,6 @@ function wikilinkToSlug(label: string): string {
   return label.toLowerCase().replace(/\s+/g, '-')
 }
 
-// Render [[wikilinks]] as clickable buttons (or styled spans if no handler)
 function processWikilinks(text: string, onWikilinkClick?: (slug: string) => void): React.ReactNode[] {
   const parts = text.split(/(\[\[[^\]]+\]\])/g)
   return parts.map((part, i) => {
@@ -35,7 +34,7 @@ function processWikilinks(text: string, onWikilinkClick?: (slug: string) => void
             key={i}
             onClick={() => onWikilinkClick(slug)}
             className="text-blue-400 bg-blue-950/40 px-0.5 rounded hover:text-blue-300 hover:bg-blue-900/50 transition-colors"
-            title={`Open: ${label}`}
+            title={'Open: ' + label}
           >
             {part}
           </button>
@@ -45,7 +44,7 @@ function processWikilinks(text: string, onWikilinkClick?: (slug: string) => void
         <span
           key={i}
           className="text-blue-400 bg-blue-950/40 px-0.5 rounded cursor-default"
-          title={`Wikilink: ${label}`}
+          title={'Wikilink: ' + label}
         >
           {part}
         </span>
@@ -57,66 +56,65 @@ function processWikilinks(text: string, onWikilinkClick?: (slug: string) => void
 
 function makeComponents(onWikilinkClick?: (slug: string) => void): Components {
   return {
-  p: ({ children }) => (
-    <p className="mb-3 leading-relaxed text-gray-300">
-      {typeof children === 'string' ? processWikilinks(children, onWikilinkClick) : children}
-    </p>
-  ),
-  h1: ({ children }) => (
-    <h1 className="text-xl font-semibold text-gray-100 mt-6 mb-3 border-b border-gray-800 pb-2">
-      {children}
-    </h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-lg font-semibold text-gray-100 mt-5 mb-2">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-base font-semibold text-gray-200 mt-4 mb-2">{children}</h3>
-  ),
-  ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 text-gray-300">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-300">{children}</ol>,
-  li: ({ children }) => <li className="text-gray-300">{children}</li>,
-  code: ({ children, className }) => {
-    const isBlock = className?.includes('language-')
-    if (isBlock) {
-      return (
-        <pre className="bg-gray-900 rounded p-3 mb-3 overflow-x-auto text-xs text-gray-300">
-          <code>{children}</code>
-        </pre>
-      )
-    }
-    return <code className="bg-gray-800 text-blue-300 px-1 py-0.5 rounded text-xs">{children}</code>
-  },
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-gray-700 pl-4 my-3 text-gray-400 italic">
-      {children}
-    </blockquote>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
-  strong: ({ children }) => <strong className="text-gray-100 font-semibold">{children}</strong>,
-  em: ({ children }) => <em className="text-gray-300 italic">{children}</em>,
-  hr: () => <hr className="border-gray-800 my-4" />,
+    p: ({ children }) => (
+      <p className="mb-3 leading-relaxed text-gray-300">
+        {typeof children === 'string' ? processWikilinks(children, onWikilinkClick) : children}
+      </p>
+    ),
+    h1: ({ children }) => (
+      <h1 className="text-xl font-semibold text-gray-100 mt-6 mb-3 border-b border-gray-800 pb-2">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="text-lg font-semibold text-gray-100 mt-5 mb-2">{children}</h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="text-base font-semibold text-gray-200 mt-4 mb-2">{children}</h3>
+    ),
+    ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1 text-gray-300">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1 text-gray-300">{children}</ol>,
+    li: ({ children }) => <li className="text-gray-300">{children}</li>,
+    code: ({ children, className }) => {
+      const isBlock = className?.includes('language-')
+      if (isBlock) {
+        return (
+          <pre className="bg-gray-900 rounded p-3 mb-3 overflow-x-auto text-xs text-gray-300">
+            <code>{children}</code>
+          </pre>
+        )
+      }
+      return <code className="bg-gray-800 text-blue-300 px-1 py-0.5 rounded text-xs">{children}</code>
+    },
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-2 border-gray-700 pl-4 my-3 text-gray-400 italic">
+        {children}
+      </blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    ),
+    strong: ({ children }) => <strong className="text-gray-100 font-semibold">{children}</strong>,
+    em: ({ children }) => <em className="text-gray-300 italic">{children}</em>,
+    hr: () => <hr className="border-gray-800 my-4" />,
   }
 }
 
-type SplitMode = 'split' | 'editor'
-
 export default function NoteViewer({ content, slug, folder, onWikilinkClick, onContentSaved, browserAdapter }: NoteViewerProps) {
-  const [isEditing, setIsEditing] = useState(false)
+  const [isEditing, setIsEditing] = useState(true)
   const [editContent, setEditContent] = useState(content)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [splitMode, setSplitMode] = useState<SplitMode>('split')
 
-  // Sync editContent when note changes
   useEffect(() => {
     setEditContent(content)
-    setIsEditing(false)
-  }, [content])
+    setSaveError(null)
+    setIsEditing(true)
+  }, [content, slug])
+
+  const dirty = editContent !== content
 
   const handleSave = useCallback(async () => {
     if (!folder || !slug) return
@@ -124,186 +122,124 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
     setSaveError(null)
     try {
       if (browserAdapter) {
-        await browserAdapter.writeNote(`${folder}/${slug}.md`, editContent)
+        await browserAdapter.writeNote(folder + '/' + slug + '.md', editContent)
       } else {
-        const res = await fetch(`/api/notes/${encodeURIComponent(slug)}?folder=${folder}`, {
+        const res = await fetch('/api/notes/' + encodeURIComponent(slug) + '?folder=' + folder, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: editContent }),
         })
         if (!res.ok) throw new Error('Save failed')
       }
-      setIsEditing(false)
       onContentSaved?.(editContent)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setSaving(false)
     }
-  }, [folder, slug, editContent, onContentSaved])
+  }, [browserAdapter, editContent, folder, onContentSaved, slug])
 
-  // Keyboard shortcuts
   useEffect(() => {
-    if (!isEditing) return
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         handleSave()
       }
-      if (e.key === 'Escape') {
-        setIsEditing(false)
+      if (e.key === 'Escape' && dirty) {
         setEditContent(content)
         setSaveError(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isEditing, handleSave, content])
+  }, [content, dirty, handleSave])
 
   const components = makeComponents(onWikilinkClick)
+  const parsed = parseNoteFrontmatter(isEditing ? editContent : content)
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-3 border-b border-gray-800 shrink-0 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-gray-400">{slug}</h2>
-        <div className="flex items-center gap-2">
-          {isEditing && (
-            <div className="flex items-center gap-1 mr-2">
+    <div className="flex flex-col h-full bg-gray-950">
+      <div className="shrink-0 border-b border-gray-800 bg-gray-950/95 px-5 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-blue-400 shadow-[0_0_10px_rgba(96,165,250,0.7)]" />
+              <h2 className="truncate text-sm font-semibold text-gray-100">{slug}</h2>
+              {dirty && <span className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300">Unsaved</span>}
+            </div>
+            <div className="mt-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-gray-600">
+              {folder && <span>{folder} note</span>}
+              <span>MDXEditor rich/source surface</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center rounded-lg border border-gray-800 bg-gray-900 p-1 shadow-sm">
               <button
-                onClick={() => setSplitMode('split')}
-                className={`text-xs px-2 py-1 rounded transition-colors ${
-                  splitMode === 'split'
-                    ? 'bg-gray-700 text-gray-200'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
-                }`}
+                onClick={() => setIsEditing(true)}
+                className={isEditing
+                  ? 'rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-blue-50 shadow-sm'
+                  : 'rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200'}
               >
-                Split
+                Editor
               </button>
               <button
-                onClick={() => setSplitMode('editor')}
-                className={`text-xs px-2 py-1 rounded transition-colors ${
-                  splitMode === 'editor'
-                    ? 'bg-gray-700 text-gray-200'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
-                }`}
+                onClick={() => setIsEditing(false)}
+                className={!isEditing
+                  ? 'rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-gray-100 shadow-sm'
+                  : 'rounded-md px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-200'}
               >
-                Focus
+                Read
               </button>
             </div>
-          )}
-          {folder && (
-            <button
-              onClick={() => {
-                if (isEditing) {
-                  setIsEditing(false)
-                  setEditContent(content)
-                  setSaveError(null)
-                } else {
-                  setIsEditing(true)
-                }
-              }}
-              className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded hover:bg-gray-800 transition-colors flex items-center gap-1"
-              title={isEditing ? 'Back to preview' : 'Edit note'}
-            >
-              {isEditing ? (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                  </svg>
-                  Preview
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                  </svg>
-                  Edit
-                </>
-              )}
-            </button>
-          )}
+            {isEditing && (
+              <>
+                <button
+                  onClick={() => {
+                    setEditContent(content)
+                    setSaveError(null)
+                  }}
+                  disabled={!dirty || saving}
+                  className="rounded-md px-3 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Reset
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={!dirty || saving}
+                  className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-semibold text-blue-50 transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+        {saveError && <div className="mt-2 text-xs text-red-400">{saveError}</div>}
       </div>
 
       {isEditing ? (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex flex-1 overflow-hidden">
-            {/* Left pane: rich markdown editor */}
-            <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-              <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
-                <span className="text-xs text-gray-500 font-medium">Rich editor</span>
-              </div>
-              <RichMarkdownEditor markdown={editContent} onChange={setEditContent} />
-            </div>
-
-            {/* Right pane: app preview (only shown in split mode) */}
-            {splitMode === 'split' && (
-              <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-                <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
-                  <span className="text-xs text-gray-500 font-medium">App preview</span>
-                </div>
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-                    {editContent}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom toolbar */}
-          <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-t border-gray-800 bg-gray-900">
-            {saveError && (
-              <span className="text-xs text-red-400 flex-1">{saveError}</span>
-            )}
-            {!saveError && (
-              <span className="text-xs text-gray-600 flex-1">Use the source toggle for raw markdown · Cmd/Ctrl+S to save · Esc to cancel</span>
-            )}
-            <button
-              onClick={() => {
-                setIsEditing(false)
-                setEditContent(content)
-                setSaveError(null)
-              }}
-              className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-3 py-1 text-xs font-medium bg-blue-900 text-blue-200 hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <RichMarkdownEditor markdown={editContent} onChange={setEditContent} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {(() => {
-            const parsed = parseNoteFrontmatter(content)
-            return (
-              <>
-                <div className="mb-4 flex items-center gap-2 text-xs text-gray-500">
-                  <span className="uppercase tracking-wide text-gray-600">Date</span>
-                  <span>{parsed.frontmatter.date ?? 'Undated'}</span>
-                </div>
-                {parsed.frontmatter.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {parsed.frontmatter.tags.map(tag => (
-                      <span key={tag} className="px-2 py-0.5 text-xs rounded bg-gray-800 text-gray-400">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-                  {parsed.content}
-                </ReactMarkdown>
-              </>
-            )
-          })()}
+          <div className="mb-4 flex items-center gap-2 text-xs text-gray-500">
+            <span className="uppercase tracking-wide text-gray-600">Date</span>
+            <span>{parsed.frontmatter.date ?? 'Undated'}</span>
+          </div>
+          {parsed.frontmatter.tags.length > 0 && (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {parsed.frontmatter.tags.map((tag) => (
+                <span key={tag} className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {parsed.content}
+          </ReactMarkdown>
         </div>
       )}
     </div>

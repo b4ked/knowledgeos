@@ -106,7 +106,7 @@ export default function Home() {
   const [sidebarScope, setSidebarScope] = useState<SidebarScope>('all')
   const [pinnedSlugs, setPinnedSlugs] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sidebarWidth, setSidebarWidth] = useState(256)
+  const [sidebarWidth, setSidebarWidth] = useState(320)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
   const [vaultModeLoaded, setVaultModeLoaded] = useState(false)
   const browserAdapterRef = useRef<BrowserVaultAdapter | null>(null)
@@ -135,7 +135,7 @@ export default function Home() {
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(320)
   const resizeStartXSidebar = useRef(0)
-  const resizeStartWidthSidebar = useRef(256)
+  const resizeStartWidthSidebar = useRef(320)
   const pageDragCounter = useRef(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const { toasts, addToast, removeToast } = useToast()
@@ -1441,7 +1441,7 @@ export default function Home() {
     function onMouseMove(e: MouseEvent) {
       if (isResizingSidebar.current) {
         const delta = e.clientX - resizeStartXSidebar.current
-        setSidebarWidth(Math.max(160, Math.min(480, resizeStartWidthSidebar.current + delta)))
+        setSidebarWidth(Math.max(260, Math.min(560, resizeStartWidthSidebar.current + delta)))
       }
       if (isResizingChat.current) {
         const delta = resizeStartX.current - e.clientX
@@ -1631,7 +1631,7 @@ export default function Home() {
         {/* Sidebar */}
         {sidebarOpen && (
           <aside
-            className={`bg-gray-900 border-r border-gray-800 flex flex-row shrink-0 transition-colors ${
+            className={`bg-gray-950 border-r border-gray-700 flex flex-row shrink-0 shadow-2xl shadow-black/30 transition-colors ${
               sidebarDragging ? 'bg-blue-950/30' : ''
             }`}
             style={{ width: sidebarWidth }}
@@ -1655,26 +1655,31 @@ export default function Home() {
             }}
           >
           <div className="flex flex-col flex-1 min-w-0">
-            <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-              <h1 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</h1>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="text-gray-600 hover:text-gray-300 transition-colors text-sm leading-none"
-                title="Hide sidebar"
-              >
-                ‹
-              </button>
+            <div className="px-4 py-3 border-b border-gray-800 bg-gray-900/70">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="text-sm font-semibold text-gray-100">Workspace</h1>
+                  <p className="mt-0.5 text-[11px] text-gray-600">Markdown vault, graph, and chat</p>
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="rounded-md px-2 py-1 text-gray-600 hover:bg-gray-800 hover:text-gray-300 transition-colors text-sm leading-none"
+                  title="Hide sidebar"
+                >
+                  ‹
+                </button>
+              </div>
             </div>
 
-            <div className="flex gap-1 px-3 py-2 border-b border-gray-800">
+            <div className="grid grid-cols-2 gap-2 px-3 py-3 border-b border-gray-800 bg-gray-950">
               {(['raw', 'wiki'] as Folder[]).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFolder(f)}
                   className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                     folder === f
-                      ? 'bg-gray-800 text-gray-100'
-                      : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+                      ? 'bg-blue-700 text-blue-50 shadow-sm'
+                      : 'bg-gray-900 text-gray-400 hover:text-gray-100 hover:bg-gray-800'
                   }`}
                 >
                   {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -1682,8 +1687,8 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="px-3 py-2 border-b border-gray-800 space-y-2">
-              <div className="flex items-center gap-2 rounded border border-gray-800 bg-gray-950 px-2 py-1.5 focus-within:border-blue-700">
+            <div className="px-3 py-3 border-b border-gray-800 space-y-3 bg-gray-900/40">
+              <div className="flex items-center gap-2 rounded-xl border border-gray-700 bg-gray-950 px-3 py-2 focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-950">
                 <span className="text-xs text-gray-600">⌕</span>
                 <input
                   ref={searchInputRef}
@@ -1703,7 +1708,7 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid grid-cols-3 gap-1 rounded-lg bg-gray-950 p-1">
                 {(['all', 'recent', 'pinned'] as const).map((scope) => (
                   <button
                     key={scope}
