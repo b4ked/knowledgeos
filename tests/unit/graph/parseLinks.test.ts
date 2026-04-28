@@ -45,8 +45,8 @@ describe('parseLinks', () => {
     expect(nodeIds).toEqual(['execution', 'strategy'])
 
     expect(edges).toHaveLength(2)
-    expect(edges).toContainEqual({ source: 'strategy', target: 'execution' })
-    expect(edges).toContainEqual({ source: 'execution', target: 'strategy' })
+    expect(edges).toContainEqual({ source: 'strategy', target: 'execution', label: 'Execution' })
+    expect(edges).toContainEqual({ source: 'execution', target: 'strategy', label: 'Strategy' })
   })
 
   it('identifies stub nodes (linked but no matching file)', () => {

@@ -4,6 +4,10 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 
+vi.mock('@/auth', () => ({
+  auth: vi.fn().mockResolvedValue(null),
+}))
+
 // --- helpers to invoke route handlers directly ---
 
 function makeRequest(url: string, init?: RequestInit): Request {
@@ -21,6 +25,7 @@ describe('GET /api/notes', () => {
     await fs.mkdir(path.join(vaultPath, 'raw'), { recursive: true })
     await fs.mkdir(path.join(vaultPath, 'wiki'), { recursive: true })
     vi.stubEnv('VAULT_PATH', vaultPath)
+    vi.stubEnv('SETTINGS_PATH', path.join(vaultPath, 'settings.json'))
   })
 
   afterEach(async () => {
@@ -68,6 +73,7 @@ describe('POST /api/notes', () => {
   beforeEach(async () => {
     vaultPath = path.join(os.tmpdir(), crypto.randomUUID())
     vi.stubEnv('VAULT_PATH', vaultPath)
+    vi.stubEnv('SETTINGS_PATH', path.join(vaultPath, 'settings.json'))
   })
 
   afterEach(async () => {
@@ -127,6 +133,7 @@ describe('GET /api/notes/[slug]', () => {
     vaultPath = path.join(os.tmpdir(), crypto.randomUUID())
     await fs.mkdir(path.join(vaultPath, 'raw'), { recursive: true })
     vi.stubEnv('VAULT_PATH', vaultPath)
+    vi.stubEnv('SETTINGS_PATH', path.join(vaultPath, 'settings.json'))
   })
 
   afterEach(async () => {
@@ -138,9 +145,9 @@ describe('GET /api/notes/[slug]', () => {
   it('returns note content', async () => {
     await fs.writeFile(path.join(vaultPath, 'raw', 'test-note.md'), '# Test', 'utf-8')
 
-    const { GET } = await import('@/app/api/notes/[slug]/route')
+    const { GET } = await import('@/app/api/notes/[...slug]/route')
     const req = makeRequest('http://localhost/api/notes/test-note?folder=raw')
-    const res = await GET(req as never, { params: Promise.resolve({ slug: 'test-note' }) })
+    const res = await GET(req as never, { params: Promise.resolve({ slug: ['test-note'] }) })
 
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -148,9 +155,9 @@ describe('GET /api/notes/[slug]', () => {
   })
 
   it('returns 404 for missing note', async () => {
-    const { GET } = await import('@/app/api/notes/[slug]/route')
+    const { GET } = await import('@/app/api/notes/[...slug]/route')
     const req = makeRequest('http://localhost/api/notes/ghost?folder=raw')
-    const res = await GET(req as never, { params: Promise.resolve({ slug: 'ghost' }) })
+    const res = await GET(req as never, { params: Promise.resolve({ slug: ['ghost'] }) })
 
     expect(res.status).toBe(404)
   })
@@ -163,6 +170,7 @@ describe('DELETE /api/notes/[slug]', () => {
     vaultPath = path.join(os.tmpdir(), crypto.randomUUID())
     await fs.mkdir(path.join(vaultPath, 'raw'), { recursive: true })
     vi.stubEnv('VAULT_PATH', vaultPath)
+    vi.stubEnv('SETTINGS_PATH', path.join(vaultPath, 'settings.json'))
   })
 
   afterEach(async () => {
@@ -174,18 +182,18 @@ describe('DELETE /api/notes/[slug]', () => {
   it('removes file from disk', async () => {
     await fs.writeFile(path.join(vaultPath, 'raw', 'to-delete.md'), 'bye', 'utf-8')
 
-    const { DELETE } = await import('@/app/api/notes/[slug]/route')
+    const { DELETE } = await import('@/app/api/notes/[...slug]/route')
     const req = makeRequest('http://localhost/api/notes/to-delete?folder=raw', { method: 'DELETE' })
-    const res = await DELETE(req as never, { params: Promise.resolve({ slug: 'to-delete' }) })
+    const res = await DELETE(req as never, { params: Promise.resolve({ slug: ['to-delete'] }) })
 
     expect(res.status).toBe(204)
     await expect(fs.stat(path.join(vaultPath, 'raw', 'to-delete.md'))).rejects.toThrow()
   })
 
   it('returns 404 when deleting a note that does not exist', async () => {
-    const { DELETE } = await import('@/app/api/notes/[slug]/route')
+    const { DELETE } = await import('@/app/api/notes/[...slug]/route')
     const req = makeRequest('http://localhost/api/notes/ghost?folder=raw', { method: 'DELETE' })
-    const res = await DELETE(req as never, { params: Promise.resolve({ slug: 'ghost' }) })
+    const res = await DELETE(req as never, { params: Promise.resolve({ slug: ['ghost'] }) })
 
     expect(res.status).toBe(404)
   })

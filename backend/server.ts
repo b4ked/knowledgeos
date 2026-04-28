@@ -6,6 +6,7 @@ import cors from 'cors'
 import fs from 'fs/promises'
 import os from 'os'
 import { randomUUID } from 'crypto'
+import { z } from 'zod'
 
 import { bearerAuth } from './middleware/auth.js'
 import { LocalVaultAdapter } from '../lib/vault/LocalVaultAdapter.js'
@@ -20,6 +21,9 @@ import type { NoteFolder } from '../lib/vault/VaultAdapter.js'
 import type { Conventions } from '../lib/conventions/types.js'
 import { normalizeRuntimeAdminSettings } from '../lib/admin/runtimeSettings.js'
 import { extractMarkdownFromFile } from './uploadExtraction.js'
+import { initVault } from '../lib/knowledge/vault/initVault.js'
+import { scanVault } from '../lib/knowledge/vault/scanVault.js'
+import { getPGliteDbPath, PGliteKnowledgeStore } from '../lib/knowledge/adapters/PGliteKnowledgeStore.js'
 
 // Load backend/.env.local — env vars are read lazily at request time so hoisting is fine
 const __filename = fileURLToPath(import.meta.url)
@@ -42,6 +46,79 @@ app.use(express.json({ limit: '100mb' }))
 // Health check — public, no auth required
 app.get('/health', (_req, res) => {
   res.json({ ok: true, vault: getVaultPath() })
+})
+
+// ── Local-first PGlite vault API ─────────────────────────────────────────────
+
+const vaultPathSchema = z.object({ path: z.string().min(1) })
+
+app.post('/vault/open', async (req, res) => {
+  const parsed = vaultPathSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+    return
+  }
+
+  try {
+    const vault = await initVault(parsed.data.path)
+    await vault.store.close()
+    res.json({ workspace: vault.workspace, config: vault.config })
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not open vault' })
+  }
+})
+
+app.post('/vault/scan', async (req, res) => {
+  const parsed = vaultPathSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' })
+    return
+  }
+
+  try {
+    res.json(await scanVault(parsed.data.path))
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not scan vault' })
+  }
+})
+
+app.get('/documents', async (req, res) => {
+  const workspaceId = typeof req.query.workspaceId === 'string' ? req.query.workspaceId : ''
+  const vaultPath = typeof req.query.path === 'string' ? req.query.path : getVaultPath()
+  if (!workspaceId) {
+    res.status(400).json({ error: 'workspaceId is required' })
+    return
+  }
+
+  const store = new PGliteKnowledgeStore(getPGliteDbPath(path.resolve(vaultPath)))
+  try {
+    await store.init()
+    res.json(await store.listDocuments(workspaceId))
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not list documents' })
+  } finally {
+    await store.close()
+  }
+})
+
+app.get('/search', async (req, res) => {
+  const workspaceId = typeof req.query.workspaceId === 'string' ? req.query.workspaceId : ''
+  const query = typeof req.query.q === 'string' ? req.query.q : ''
+  const vaultPath = typeof req.query.path === 'string' ? req.query.path : getVaultPath()
+  if (!workspaceId || !query) {
+    res.status(400).json({ error: 'workspaceId and q are required' })
+    return
+  }
+
+  const store = new PGliteKnowledgeStore(getPGliteDbPath(path.resolve(vaultPath)))
+  try {
+    await store.init()
+    res.json(await store.searchChunks(workspaceId, query))
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not search chunks' })
+  } finally {
+    await store.close()
+  }
 })
 
 app.use('/api', (req, res, next) => {

@@ -4,6 +4,10 @@ import * as os from 'os'
 import * as path from 'path'
 import { DEFAULT_CONVENTIONS } from '@/lib/conventions/defaults'
 
+vi.mock('@/auth', () => ({
+  auth: vi.fn().mockResolvedValue(null),
+}))
+
 let tmpDir: string
 
 beforeEach(async () => {

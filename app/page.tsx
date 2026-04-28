@@ -39,6 +39,7 @@ import FrontmatterPanel from '@/components/FrontmatterPanel'
 import { normaliseTagList, parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 import GraphQueryBar from '@/components/GraphQueryBar'
 import FileImportModal, { type FileImportItem } from '@/components/FileImportModal'
+import LocalVaultBackendPanel from '@/components/LocalVaultBackendPanel'
 import type { QueryInsights } from '@/components/GraphQueryBar'
 
 type Folder = 'raw' | 'wiki'
@@ -100,6 +101,7 @@ export default function Home() {
   const [showRAG, setShowRAG] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showTags, setShowTags] = useState(false)
+  const [showLocalBackend, setShowLocalBackend] = useState(false)
   const [queryInsights, setQueryInsights] = useState<QueryInsights | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [sidebarQuery, setSidebarQuery] = useState('')
@@ -1594,6 +1596,15 @@ export default function Home() {
             Tags
           </button>
           <button
+            onClick={() => setShowLocalBackend(v => !v)}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              showLocalBackend ? 'bg-blue-900 text-blue-200' : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800'
+            }`}
+            title="PGlite vault backend"
+          >
+            Vault DB
+          </button>
+          <button
             onClick={() => setShowHelp(true)}
             className="px-3 py-1 text-xs text-gray-400 hover:text-gray-100 hover:bg-gray-800 rounded transition-colors"
             title="Help"
@@ -1610,6 +1621,7 @@ export default function Home() {
         mode={vaultMode}
         onSwitch={() => setShowSettings(true)}
       />
+      {showLocalBackend && <LocalVaultBackendPanel />}
       <UsageBanner version={usageVersion} />
 
       {/* Body */}

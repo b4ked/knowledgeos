@@ -1,0 +1,10 @@
+export { PGliteKnowledgeStore, getPGliteDbPath } from './adapters/PGliteKnowledgeStore'
+export { RemotePostgresKnowledgeStore } from './adapters/RemotePostgresKnowledgeStore.stub'
+export type { KnowledgeStore } from './adapters/KnowledgeStore'
+export { initVault } from './vault/initVault'
+export { scanVault } from './vault/scanVault'
+export { chunkMarkdown } from './vault/chunkMarkdown'
+export { hashContent } from './vault/hashContent'
+export { importGraphifyJson } from './vault/importGraphifyJson'
+export type * from './types/models'
+

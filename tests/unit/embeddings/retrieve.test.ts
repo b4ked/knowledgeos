@@ -24,7 +24,6 @@ function makeMockLLM(embedding: number[]): LLMProvider {
     compile: vi.fn(),
     query: vi.fn(),
     embed: vi.fn().mockResolvedValue(embedding),
-    embeddingModel: 'test-model',
   }
 }
 
