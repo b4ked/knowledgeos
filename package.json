@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.85.0",
+    "@mdxeditor/editor": "^3.55.0",
     "@mozilla/readability": "^0.6.0",
     "@types/d3": "^7.4.3",
     "bcryptjs": "^3.0.3",

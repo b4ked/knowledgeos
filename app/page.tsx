@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import type { NoteFolder, NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
@@ -43,6 +43,7 @@ import type { QueryInsights } from '@/components/GraphQueryBar'
 
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
+type SidebarScope = 'all' | 'recent' | 'pinned'
 type Tag = { name: string; count: number }
 type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
 const PUBLIC_UPLOAD_URL = process.env.NEXT_PUBLIC_VPS_UPLOAD_URL?.trim() || 'https://api.parrytech.co/knos/api/upload-public'
@@ -101,6 +102,9 @@ export default function Home() {
   const [showTags, setShowTags] = useState(false)
   const [queryInsights, setQueryInsights] = useState<QueryInsights | null>(null)
   const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [sidebarQuery, setSidebarQuery] = useState('')
+  const [sidebarScope, setSidebarScope] = useState<SidebarScope>('all')
+  const [pinnedSlugs, setPinnedSlugs] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(256)
   const [vaultMode, setVaultMode] = useState<VaultMode>('remote')
@@ -133,6 +137,7 @@ export default function Home() {
   const resizeStartXSidebar = useRef(0)
   const resizeStartWidthSidebar = useRef(256)
   const pageDragCounter = useRef(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { toasts, addToast, removeToast } = useToast()
   const { status: sessionStatus } = useSession()
   const presetOptions = [...Object.keys(BUILT_IN_PRESETS), ...sidebarPresets]
@@ -650,6 +655,23 @@ export default function Home() {
       .then((d: { names: string[] }) => setSidebarPresets(d.names ?? []))
       .catch(() => { /* silent */ })
   }, [])
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('knowledgeos.pinnedSlugs')
+      if (raw) setPinnedSlugs(new Set(JSON.parse(raw) as string[]))
+    } catch {
+      // Ignore storage failures
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('knowledgeos.pinnedSlugs', JSON.stringify([...pinnedSlugs]))
+    } catch {
+      // Ignore storage failures
+    }
+  }, [pinnedSlugs])
 
   const loadNotes = useCallback(async (f: Folder) => {
     const version = ++loadNotesVersion.current
@@ -1370,9 +1392,49 @@ export default function Home() {
     }, 150)
   }
 
-  const displayedNotes = activeTag
-    ? notes.filter((note) => (noteTags[note.path] ?? []).includes(activeTag))
-    : notes
+  const displayedNotes = useMemo(() => {
+    const query = sidebarQuery.trim().toLowerCase()
+    let next = activeTag
+      ? notes.filter((note) => (noteTags[note.path] ?? []).includes(activeTag))
+      : notes
+
+    if (query) {
+      next = next.filter((note) => {
+        const searchable = [
+          note.slug,
+          note.filename,
+          note.path,
+          note.folder,
+          ...(noteTags[note.path] ?? []),
+        ].join(' ').toLowerCase()
+        return query.split(/\s+/).every((part) => searchable.includes(part))
+      })
+    }
+
+    if (sidebarScope === 'pinned') {
+      next = next.filter((note) => pinnedSlugs.has(note.slug))
+    }
+
+    if (sidebarScope === 'recent') {
+      next = [...next]
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .slice(0, 24)
+    }
+
+    return next
+  }, [activeTag, noteTags, notes, pinnedSlugs, sidebarQuery, sidebarScope])
+
+  const pinnedSelected = selectedNote ? pinnedSlugs.has(selectedNote.slug) : false
+
+  function toggleSelectedPin() {
+    if (!selectedNote) return
+    setPinnedSlugs((prev) => {
+      const next = new Set(prev)
+      if (next.has(selectedNote.slug)) next.delete(selectedNote.slug)
+      else next.add(selectedNote.slug)
+      return next
+    })
+  }
 
   // Resize drag — sidebar (right edge) and chat (left edge)
   useEffect(() => {
@@ -1401,10 +1463,22 @@ export default function Home() {
   // Keyboard shortcuts
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.metaKey && e.key === 'n') { e.preventDefault(); setShowGraph(false); setPanel('new') }
-      if (e.metaKey && e.key === 'g') { e.preventDefault(); toggleGraph() }
-      if (e.metaKey && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
-      if (e.metaKey && e.key === ',') { e.preventDefault(); setShowPresets((v) => !v) }
+      const shortcut = e.metaKey || e.ctrlKey
+      const target = e.target as HTMLElement | null
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+
+      if (shortcut && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSidebarOpen(true)
+        window.setTimeout(() => searchInputRef.current?.focus(), 0)
+        return
+      }
+
+      if (typing) return
+      if (shortcut && e.key.toLowerCase() === 'n') { e.preventDefault(); setShowGraph(false); setPanel('new') }
+      if (shortcut && e.key.toLowerCase() === 'g') { e.preventDefault(); toggleGraph() }
+      if (shortcut && e.key === '/') { e.preventDefault(); setShowChat((v) => !v) }
+      if (shortcut && e.key === ',') { e.preventDefault(); setShowPresets((v) => !v) }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -1608,13 +1682,71 @@ export default function Home() {
               ))}
             </div>
 
+            <div className="px-3 py-2 border-b border-gray-800 space-y-2">
+              <div className="flex items-center gap-2 rounded border border-gray-800 bg-gray-950 px-2 py-1.5 focus-within:border-blue-700">
+                <span className="text-xs text-gray-600">⌕</span>
+                <input
+                  ref={searchInputRef}
+                  value={sidebarQuery}
+                  onChange={(event) => setSidebarQuery(event.target.value)}
+                  placeholder="Search notes, tags, paths"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-gray-200 placeholder:text-gray-600 outline-none"
+                />
+                {sidebarQuery && (
+                  <button
+                    onClick={() => setSidebarQuery('')}
+                    className="text-xs text-gray-600 hover:text-gray-300"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-1">
+                {(['all', 'recent', 'pinned'] as const).map((scope) => (
+                  <button
+                    key={scope}
+                    onClick={() => setSidebarScope(scope)}
+                    className={`rounded px-2 py-1 text-xs capitalize transition-colors ${
+                      sidebarScope === scope
+                        ? 'bg-gray-800 text-gray-100'
+                        : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300'
+                    }`}
+                  >
+                    {scope}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
+                <span>{displayedNotes.length} of {notes.length}</span>
+                <span>Cmd/Ctrl+K</span>
+              </div>
+
+              {selectedNote && (
+                <button
+                  onClick={toggleSelectedPin}
+                  className={`w-full truncate rounded px-2 py-1 text-left text-xs transition-colors ${
+                    pinnedSelected
+                      ? 'bg-amber-950/50 text-amber-300 hover:bg-amber-900/50'
+                      : 'bg-gray-950 text-gray-500 hover:bg-gray-800 hover:text-gray-300'
+                  }`}
+                  title={pinnedSelected ? `Unpin ${selectedNote.slug}` : `Pin ${selectedNote.slug}`}
+                >
+                  {pinnedSelected ? '★ Pinned: ' : '☆ Pin current: '}{selectedNote.slug}
+                </button>
+              )}
+            </div>
+
             <div className={`px-3 py-2 border-b text-xs ${
               sidebarDragging
                 ? 'border-blue-900/60 bg-blue-950/30 text-blue-200'
                 : 'border-gray-800 bg-gray-900 text-gray-500'
             }`}>
-              <p>Drag and drop up to 10 files</p>
+              <p>Drop files here to import</p>
             </div>
+
 
             {showTags && (
               <div className="border-b border-gray-800 shrink-0" style={{ height: 200, overflow: 'hidden' }}>

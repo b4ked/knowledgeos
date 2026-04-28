@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { parseNoteFrontmatter } from '@/lib/vault/frontmatter'
 import type { BrowserVaultAdapter } from '@/lib/vault/BrowserVaultAdapter'
+import RichMarkdownEditor from '@/components/RichMarkdownEditor'
 
 interface NoteViewerProps {
   content: string
@@ -186,7 +187,7 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
                     : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
                 }`}
               >
-                Editor only
+                Focus
               </button>
             </div>
           )}
@@ -228,25 +229,19 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
       {isEditing ? (
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex flex-1 overflow-hidden">
-            {/* Left pane: raw markdown editor */}
+            {/* Left pane: rich markdown editor */}
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">
               <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
-                <span className="text-xs text-gray-500 font-medium">Edit</span>
+                <span className="text-xs text-gray-500 font-medium">Rich editor</span>
               </div>
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                className="flex-1 font-mono text-sm bg-gray-950 text-gray-200 p-4 resize-none w-full h-full outline-none border-0 border-r border-gray-800"
-                spellCheck={false}
-                autoFocus
-              />
+              <RichMarkdownEditor markdown={editContent} onChange={setEditContent} />
             </div>
 
-            {/* Right pane: live preview (only shown in split mode) */}
+            {/* Right pane: app preview (only shown in split mode) */}
             {splitMode === 'split' && (
               <div className="flex flex-col flex-1 overflow-hidden min-w-0">
                 <div className="px-3 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
-                  <span className="text-xs text-gray-500 font-medium">Preview</span>
+                  <span className="text-xs text-gray-500 font-medium">App preview</span>
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
@@ -263,7 +258,7 @@ export default function NoteViewer({ content, slug, folder, onWikilinkClick, onC
               <span className="text-xs text-red-400 flex-1">{saveError}</span>
             )}
             {!saveError && (
-              <span className="text-xs text-gray-600 flex-1">⌘S to save · Esc to cancel</span>
+              <span className="text-xs text-gray-600 flex-1">Use the source toggle for raw markdown · Cmd/Ctrl+S to save · Esc to cancel</span>
             )}
             <button
               onClick={() => {
