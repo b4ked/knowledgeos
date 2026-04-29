@@ -790,22 +790,33 @@ export default function Home() {
         ])
         const { buildGraphifyOutputFromNotes } = await import('@/lib/graph/graphify')
         result = buildGraphifyOutputFromNotes([...wikiNotes, ...rawNotes])
-        await adapter.writeNote('.knowx/graphify/graph.json', `${JSON.stringify(result, null, 2)}\n`)
+        try {
+          await adapter.writeNote('.knowx/graphify/graph.json', `${JSON.stringify(result, null, 2)}\n`)
+        } catch {
+          // Some browser File System Access implementations reject dot-prefixed folders.
+          // Displaying the graph is still useful; filesystem persistence can be handled by the VPS/server path.
+        }
       } else {
         const res = await fetch('/api/graphify/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ persist: true }),
         })
-        const data = await res.json() as GraphifyRunResult & { error?: string }
+        const text = await res.text()
+        const data = text
+          ? JSON.parse(text) as GraphifyRunResult & { error?: string; warning?: string }
+          : { error: `Graphify returned an empty response (${res.status})` }
         if (!res.ok) throw new Error(data.error ?? 'Graphify failed')
+        if (!('graph' in data)) throw new Error(data.error ?? 'Graphify returned an invalid response')
         result = data
       }
 
       if (version !== loadGraphVersion.current) return
       setGraphData(result.graph)
       graphDataRef.current = result.graph
-      setGraphifyStatus(`Knowx graph: ${result.nodeCount} nodes, ${result.edgeCount} edges`)
+      setGraphifyStatus(
+        `${result.source === 'graphify' ? 'Graphify' : 'Knowx fallback'}: ${result.nodeCount} nodes, ${result.edgeCount} edges`,
+      )
     } catch (err) {
       if (version === loadGraphVersion.current) {
         setGraphifyStatus(err instanceof Error ? err.message : 'Graphify failed')
