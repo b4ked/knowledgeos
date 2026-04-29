@@ -41,7 +41,25 @@ export async function proxyToVps(
 ): Promise<Response> {
   const vps = getVpsConfig()
   if (!vps) throw new Error('VPS not configured')
+  return proxyToVpsConfig(vps, path, method, body)
+}
 
+export async function proxyToAnyVps(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<Response> {
+  const vps = getAnyVpsConfig()
+  if (!vps) throw new Error('VPS not configured')
+  return proxyToVpsConfig(vps, path, method, body)
+}
+
+async function proxyToVpsConfig(
+  vps: { baseUrl: string; token: string },
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<Response> {
   const res = await fetch(`${vps.baseUrl}${path}`, {
     method,
     headers: {
@@ -51,6 +69,15 @@ export async function proxyToVps(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  const data = await res.json()
+  const text = await res.text()
+  const data = text ? safeJson(text) : { error: `Empty VPS response (${res.status})` }
   return Response.json(data, { status: res.status })
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { error: text }
+  }
 }

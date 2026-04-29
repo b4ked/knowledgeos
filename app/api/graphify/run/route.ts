@@ -2,11 +2,13 @@ import { auth } from '@/auth'
 import { getAdapter, getServerVaultMode } from '@/lib/vault/getAdapter'
 import { runGraphifyForAdapter, writeGraphifyOutput } from '@/lib/graph/graphifyServer'
 import { buildGraphifyOutputFromNotes } from '@/lib/graph/graphify'
+import { getAnyVpsConfig, proxyToAnyVps } from '@/lib/vpsProxy'
 import type { NoteInput } from '@/lib/graph/parseLinks'
 
 type Body = {
   notes?: NoteInput[]
   persist?: boolean
+  forceVps?: boolean
 }
 
 export async function POST(request: Request) {
@@ -17,6 +19,10 @@ export async function POST(request: Request) {
 
     if (Array.isArray(body.notes)) {
       return Response.json(buildGraphifyOutputFromNotes(body.notes))
+    }
+
+    if ((body.forceVps || vaultMode === 'remote') && getAnyVpsConfig()) {
+      return proxyToAnyVps('/api/graphify/run', 'POST', { persist: body.persist !== false })
     }
 
     const adapter = await getAdapter(vaultMode === 'cloud' ? session?.user?.id : undefined)

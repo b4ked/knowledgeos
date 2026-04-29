@@ -800,7 +800,7 @@ export default function Home() {
         const res = await fetch('/api/graphify/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ persist: true }),
+          body: JSON.stringify({ persist: true, forceVps: true }),
         })
         const text = await res.text()
         const data = text
