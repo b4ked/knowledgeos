@@ -1,6 +1,6 @@
 import type { VaultAdapter } from '../vault/VaultAdapter'
 import { parseLinks } from './parseLinks'
-import type { GraphData, NoteInput } from './parseLinks'
+import type { GraphData, GraphEdge, GraphNode, NoteInput } from './parseLinks'
 
 export interface GraphifyRunResult {
   graph: GraphData
@@ -50,11 +50,12 @@ export function normalizeGraphifyOutput(input: unknown): GraphifyRunResult {
     graph?: { nodes?: unknown; edges?: unknown }
   }
 
-  const graph = candidate.graph && Array.isArray(candidate.graph.nodes) && Array.isArray(candidate.graph.edges)
-    ? candidate.graph as GraphData
-    : Array.isArray(candidate.nodes) && Array.isArray(candidate.edges)
-      ? { nodes: candidate.nodes, edges: candidate.edges } as GraphData
+  const rawGraph = candidate.graph && Array.isArray(candidate.graph.nodes)
+    ? candidate.graph
+    : Array.isArray(candidate.nodes)
+      ? candidate
       : { nodes: [], edges: [] }
+  const graph = coerceGraphData(rawGraph)
 
   return {
     graph,
@@ -63,4 +64,34 @@ export function normalizeGraphifyOutput(input: unknown): GraphifyRunResult {
     nodeCount: graph.nodes.length,
     edgeCount: graph.edges.length,
   }
+}
+
+function coerceGraphData(rawGraph: { nodes?: unknown; edges?: unknown; links?: unknown }): GraphData {
+  const rawNodes = Array.isArray(rawGraph.nodes) ? rawGraph.nodes as Array<Record<string, unknown>> : []
+  const nodes: GraphNode[] = rawNodes
+    .map((node) => ({
+      id: String(node.id ?? node.label ?? ''),
+      label: String(node.label ?? node.id ?? ''),
+      type: coerceNodeType(node.type ?? node.file_type),
+    }))
+    .filter((node) => node.id && node.label)
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const rawEdges = Array.isArray(rawGraph.edges)
+    ? rawGraph.edges
+    : Array.isArray(rawGraph.links)
+      ? rawGraph.links
+      : []
+  const edges: GraphEdge[] = (rawEdges as Array<Record<string, unknown>>)
+    .map((edge) => ({
+      source: String(edge.source ?? edge.from ?? ''),
+      target: String(edge.target ?? edge.to ?? ''),
+      label: String(edge.label ?? edge.relation ?? edge.type ?? 'related'),
+    }))
+    .filter((edge) => edge.source && edge.target && nodeIds.has(edge.source) && nodeIds.has(edge.target))
+  return { nodes, edges }
+}
+
+function coerceNodeType(value: unknown): GraphNode['type'] {
+  if (value === 'raw' || value === 'stub') return value
+  return 'wiki'
 }

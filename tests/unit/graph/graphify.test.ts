@@ -18,14 +18,16 @@ describe('graphify output', () => {
     const result = normalizeGraphifyOutput({
       source: 'graphify',
       graph: {
-        nodes: [{ id: 'a', label: 'A', type: 'wiki' }],
-        edges: [],
+        nodes: [{ id: 'a', label: 'A', file_type: 'document' }, { id: 'b', label: 'B', file_type: 'stub' }],
+        links: [{ source: 'a', target: 'b', relation: 'wikilink' }],
       },
     })
 
     expect(result.source).toBe('graphify')
-    expect(result.nodeCount).toBe(1)
-    expect(result.edgeCount).toBe(0)
+    expect(result.nodeCount).toBe(2)
+    expect(result.edgeCount).toBe(1)
+    expect(result.graph.nodes[0]).toMatchObject({ id: 'a', type: 'wiki' })
+    expect(result.graph.nodes[1]).toMatchObject({ id: 'b', type: 'stub' })
+    expect(result.graph.edges[0]).toMatchObject({ source: 'a', target: 'b', label: 'wikilink' })
   })
 })
-

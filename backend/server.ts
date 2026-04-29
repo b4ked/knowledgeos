@@ -24,7 +24,7 @@ import { extractMarkdownFromFile } from './uploadExtraction.js'
 import { initVault } from '../lib/knowledge/vault/initVault.js'
 import { scanVault } from '../lib/knowledge/vault/scanVault.js'
 import { getPGliteDbPath, PGliteKnowledgeStore } from '../lib/knowledge/adapters/PGliteKnowledgeStore.js'
-import { runGraphifyForAdapter, writeGraphifyOutput } from '../lib/graph/graphifyServer.js'
+import { runGraphifyForAdapter, runGraphifyForWikiFolder, writeGraphifyOutput } from '../lib/graph/graphifyServer.js'
 
 // Load backend/.env.local — env vars are read lazily at request time so hoisting is fine
 const __filename = fileURLToPath(import.meta.url)
@@ -255,10 +255,24 @@ app.get('/api/graph', async (_req, res) => {
 app.post('/api/graphify/run', async (req, res) => {
   const { persist = true } = req.body as { persist?: boolean }
   try {
+    const vaultPath = getVaultPath()
+    const settings = await readSettings()
+    const wikiPath = settings.wikiPath ? path.resolve(settings.wikiPath) : path.join(vaultPath, 'wiki')
+    const outputDir = path.join(vaultPath, '.knowx', 'graphify')
     const adapter = await getAdapter()
-    const result = await runGraphifyForAdapter(adapter)
-    if (persist) await writeGraphifyOutput(adapter, result)
-    res.json(result)
+    const hasGraphifyCommand = Boolean(process.env.GRAPHIFY_COMMAND?.trim())
+    const result = hasGraphifyCommand
+      ? await runGraphifyForWikiFolder(wikiPath, outputDir)
+      : await runGraphifyForAdapter(adapter)
+    let warning: string | undefined
+    if (persist && !hasGraphifyCommand) {
+      try {
+        await writeGraphifyOutput(adapter, result)
+      } catch (err) {
+        warning = err instanceof Error ? err.message : 'Could not persist Graphify output'
+      }
+    }
+    res.json({ ...result, warning })
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Graphify failed' })
   }
