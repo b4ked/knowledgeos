@@ -155,6 +155,20 @@ async function getRuntimeSettings() {
   return { settings, admin: normalizeRuntimeAdminSettings(settings) }
 }
 
+async function listMarkdownFiles(root: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { withFileTypes: true })
+  const files: string[] = []
+  for (const entry of entries) {
+    const fullPath = path.join(root, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await listMarkdownFiles(fullPath))
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      files.push(fullPath)
+    }
+  }
+  return files
+}
+
 // ── Notes ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/notes', async (req, res) => {
@@ -275,6 +289,45 @@ app.post('/api/graphify/run', async (req, res) => {
     res.json({ ...result, warning })
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Graphify failed' })
+  }
+})
+
+app.get('/api/graphify/node', async (req, res) => {
+  const id = typeof req.query.id === 'string' ? req.query.id : ''
+  if (!id) {
+    res.status(400).json({ error: 'id is required' })
+    return
+  }
+
+  try {
+    const vaultPath = getVaultPath()
+    const graphifyDir = path.join(vaultPath, '.knowx', 'graphify')
+    const obsidianDir = path.join(graphifyDir, 'obsidian')
+    const graphPath = path.join(graphifyDir, 'graph.json')
+    const graph = JSON.parse(await fs.readFile(graphPath, 'utf-8')) as {
+      nodes?: Array<{ id?: string; label?: string }>
+    }
+    const node = graph.nodes?.find((item) => item.id === id || item.label === id)
+    const candidates = [node?.label, node?.id, id].filter((value): value is string => !!value)
+    const files = await listMarkdownFiles(obsidianDir)
+
+    for (const candidate of candidates) {
+      const match = files.find((file) => path.basename(file, '.md') === candidate)
+      if (match) {
+        const content = await fs.readFile(match, 'utf-8')
+        res.json({
+          id,
+          title: path.basename(match, '.md'),
+          path: path.relative(obsidianDir, match).replace(/\\/g, '/'),
+          content,
+        })
+        return
+      }
+    }
+
+    res.status(404).json({ error: `Graphify node not found: ${id}` })
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Could not read Graphify node' })
   }
 })
 

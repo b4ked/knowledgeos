@@ -46,6 +46,7 @@ import type { QueryInsights } from '@/components/GraphQueryBar'
 type Folder = 'raw' | 'wiki'
 type Panel = 'viewer' | 'new'
 type SidebarScope = 'all' | 'recent' | 'pinned'
+type GraphSource = 'vault' | 'graphify'
 type Tag = { name: string; count: number }
 type TokeniseResult = { indexed: number; skipped: number; total: number; errors: string[] }
 const PUBLIC_UPLOAD_URL = process.env.NEXT_PUBLIC_VPS_UPLOAD_URL?.trim() || 'https://api.parrytech.co/knos/api/upload-public'
@@ -95,6 +96,7 @@ export default function Home() {
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphifyLoading, setGraphifyLoading] = useState(false)
   const [graphifyStatus, setGraphifyStatus] = useState<string | null>(null)
+  const [graphSource, setGraphSource] = useState<GraphSource>('vault')
   const [showChat, setShowChat] = useState(true)
   const [showPresets, setShowPresets] = useState(false)
   const [compilePreset, setCompilePreset] = useState<string>('default')
@@ -161,6 +163,7 @@ export default function Home() {
     setGraphData({ nodes: [], edges: [] })
     graphDataRef.current = { nodes: [], edges: [] }
     setGraphLoading(false)
+    setGraphSource('vault')
     setNoteTags({})
     setLocalTags([])
     setActiveTag(null)
@@ -713,6 +716,7 @@ export default function Home() {
     // Increment version so any in-flight older call can detect it was superseded
     const version = ++loadGraphVersion.current
     setGraphLoading(true)
+    setGraphSource('vault')
     // Immediately clear stale data from a previous vault mode
     setGraphData({ nodes: [], edges: [] })
     graphDataRef.current = { nodes: [], edges: [] }
@@ -814,6 +818,7 @@ export default function Home() {
       if (version !== loadGraphVersion.current) return
       setGraphData(result.graph)
       graphDataRef.current = result.graph
+      setGraphSource('graphify')
       setGraphifyStatus(
         `${result.source === 'graphify' ? 'Graphify' : 'Knowx fallback'}: ${result.nodeCount} nodes, ${result.edgeCount} edges`,
       )
@@ -1424,6 +1429,30 @@ export default function Home() {
   }
 
   function handleGraphNodeClick(nodeId: string, nodeType: 'wiki' | 'raw' | 'stub') {
+    if (graphSource === 'graphify') {
+      setTimeout(async () => {
+        const res = await fetch(`/api/graphify/node?id=${encodeURIComponent(nodeId)}`)
+        if (!res.ok) {
+          addToast(`Graphify node not found: ${nodeId}`, 'error')
+          return
+        }
+        const data = await res.json() as { title: string; path: string; content: string }
+        setShowGraph(false)
+        setFolder('wiki')
+        setSelectedNote({
+          slug: nodeId,
+          filename: `${data.title}.md`,
+          folder: 'wiki',
+          path: `wiki/${data.path}` as `wiki/${string}`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        setNoteContent(data.content)
+        setPanel('viewer')
+      }, 150)
+      return
+    }
+
     if (nodeType === 'stub') return
     const targetFolder = nodeType === 'wiki' ? 'wiki' : 'raw'
     if (folder !== targetFolder) setFolder(targetFolder)
@@ -2071,6 +2100,14 @@ export default function Home() {
                   onNoteOpen={handleChatSourceClick}
                   onDismiss={() => setQueryInsights(null)}
                   onGetNoteContent={async (slug) => {
+                    if (graphSource === 'graphify') {
+                      const res = await fetch(`/api/graphify/node?id=${encodeURIComponent(slug)}`)
+                      if (res.ok) {
+                        const data = await res.json() as { content: string }
+                        return data.content
+                      }
+                      return ''
+                    }
                     if (vaultMode === 'local' && browserAdapterRef.current) {
                       return browserAdapterRef.current.readNote(`wiki/${slug}.md`).catch(() => '')
                     }
