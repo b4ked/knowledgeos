@@ -3,7 +3,7 @@
  * should run on the VPS backend which has the LLM API key and a writable
  * filesystem. This helper proxies the request to the VPS.
  */
-const DEFAULT_PUBLIC_VPS_BASE_URL = 'https://knos-api.parrytech.co'
+const DEFAULT_PUBLIC_VPS_BASE_URL = 'https://api.parrytech.co/knos'
 
 function resolveVpsBaseUrl(rawBaseUrl?: string | null): string | null {
   const baseUrl = rawBaseUrl?.trim()
