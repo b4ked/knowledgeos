@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import type { NoteFolder, NoteMetadata } from '@/lib/vault/VaultAdapter'
 import type { GraphData } from '@/lib/graph/parseLinks'
+import type { GraphifyRunResult } from '@/lib/graph/graphify'
 import FolderTree from '@/components/FolderTree'
 import NewFolderDialog from '@/components/NewFolderDialog'
 import NoteViewer from '@/components/NoteViewer'
@@ -92,6 +93,8 @@ export default function Home() {
   const [showGraph, setShowGraph] = useState(true)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [graphLoading, setGraphLoading] = useState(false)
+  const [graphifyLoading, setGraphifyLoading] = useState(false)
+  const [graphifyStatus, setGraphifyStatus] = useState<string | null>(null)
   const [showChat, setShowChat] = useState(true)
   const [showPresets, setShowPresets] = useState(false)
   const [compilePreset, setCompilePreset] = useState<string>('default')
@@ -756,6 +759,61 @@ export default function Home() {
       if (version === loadGraphVersion.current) setGraphLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultMode])
+
+  const runKnowxGraphify = useCallback(async () => {
+    const version = ++loadGraphVersion.current
+    setGraphifyLoading(true)
+    setGraphLoading(true)
+    setGraphifyStatus(null)
+    try {
+      let result: GraphifyRunResult
+
+      if (vaultMode === 'local') {
+        const adapter = browserAdapterRef.current
+        if (!adapter) throw new Error('Reconnect your local vault folder first')
+        const [wikiMeta, rawMeta] = await Promise.all([
+          adapter.listNotes('wiki'),
+          adapter.listNotes('raw'),
+        ])
+        const [wikiNotes, rawNotes] = await Promise.all([
+          Promise.all(wikiMeta.map(async (note) => ({
+            slug: note.slug,
+            content: await adapter.readNote(note.path).catch(() => ''),
+            type: 'wiki' as const,
+          }))),
+          Promise.all(rawMeta.map(async (note) => ({
+            slug: note.slug,
+            content: await adapter.readNote(note.path).catch(() => ''),
+            type: 'raw' as const,
+          }))),
+        ])
+        const { buildGraphifyOutputFromNotes } = await import('@/lib/graph/graphify')
+        result = buildGraphifyOutputFromNotes([...wikiNotes, ...rawNotes])
+        await adapter.writeNote('.knowx/graphify/graph.json', `${JSON.stringify(result, null, 2)}\n`)
+      } else {
+        const res = await fetch('/api/graphify/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ persist: true }),
+        })
+        const data = await res.json() as GraphifyRunResult & { error?: string }
+        if (!res.ok) throw new Error(data.error ?? 'Graphify failed')
+        result = data
+      }
+
+      if (version !== loadGraphVersion.current) return
+      setGraphData(result.graph)
+      graphDataRef.current = result.graph
+      setGraphifyStatus(`Knowx graph: ${result.nodeCount} nodes, ${result.edgeCount} edges`)
+    } catch (err) {
+      if (version === loadGraphVersion.current) {
+        setGraphifyStatus(err instanceof Error ? err.message : 'Graphify failed')
+      }
+    } finally {
+      if (version === loadGraphVersion.current) setGraphLoading(false)
+      setGraphifyLoading(false)
+    }
   }, [vaultMode])
 
   useEffect(() => {
@@ -1950,15 +2008,32 @@ export default function Home() {
           {showGraph && (
             <aside className="flex-1 bg-gray-950 flex flex-col min-w-0">
               <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between shrink-0">
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Graph</span>
-                <button
-                  onClick={loadGraph}
-                  disabled={graphLoading}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
-                  title="Refresh graph"
-                >
-                  ↻
-                </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Graph</span>
+                  <button
+                    onClick={runKnowxGraphify}
+                    disabled={graphLoading || graphifyLoading}
+                    className="rounded border border-indigo-800 bg-indigo-950 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300 transition-colors hover:border-indigo-600 hover:text-indigo-100 disabled:opacity-40"
+                    title="Run Knowx Graphify and display its graph"
+                  >
+                    Knowx
+                  </button>
+                  {graphifyStatus && (
+                    <span className="truncate text-[10px] text-gray-600" title={graphifyStatus}>
+                      {graphifyStatus}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={loadGraph}
+                    disabled={graphLoading}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
+                    title="Refresh graph"
+                  >
+                    ↻
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-hidden">
                 {graphLoading ? (

@@ -24,6 +24,7 @@ import { extractMarkdownFromFile } from './uploadExtraction.js'
 import { initVault } from '../lib/knowledge/vault/initVault.js'
 import { scanVault } from '../lib/knowledge/vault/scanVault.js'
 import { getPGliteDbPath, PGliteKnowledgeStore } from '../lib/knowledge/adapters/PGliteKnowledgeStore.js'
+import { runGraphifyForAdapter, writeGraphifyOutput } from '../lib/graph/graphifyServer.js'
 
 // Load backend/.env.local — env vars are read lazily at request time so hoisting is fine
 const __filename = fileURLToPath(import.meta.url)
@@ -249,6 +250,18 @@ app.get('/api/graph', async (_req, res) => {
   ])
 
   res.json(parseLinks([...wikiNotes, ...rawNotes]))
+})
+
+app.post('/api/graphify/run', async (req, res) => {
+  const { persist = true } = req.body as { persist?: boolean }
+  try {
+    const adapter = await getAdapter()
+    const result = await runGraphifyForAdapter(adapter)
+    if (persist) await writeGraphifyOutput(adapter, result)
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Graphify failed' })
+  }
 })
 
 // ── Compile ───────────────────────────────────────────────────────────────────
