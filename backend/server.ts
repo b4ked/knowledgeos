@@ -36,8 +36,17 @@ const PORT = process.env.PORT ?? 4000
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : ['http://localhost:3000']
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. server-to-server, curl)
+    if (!origin) return callback(null, true)
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin '${origin}' not allowed`))
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }))
@@ -850,7 +859,22 @@ async function processUploadFile(
 
   const tmpPath = path.join(os.tmpdir(), `kos-upload-${randomUUID()}${safeExt}`)
   try {
-    await fs.writeFile(tmpPath, Buffer.from(base64Content, 'base64'))
+    const fileBuffer = Buffer.from(base64Content, 'base64')
+
+    // Basic magic-byte MIME check — reject executables and scripts regardless of extension
+    const FORBIDDEN_MAGIC: Array<{ bytes: number[]; label: string }> = [
+      { bytes: [0x4d, 0x5a], label: 'Windows executable (MZ)' },                   // .exe/.dll
+      { bytes: [0x7f, 0x45, 0x4c, 0x46], label: 'ELF executable' },                // Linux ELF
+      { bytes: [0xca, 0xfe, 0xba, 0xbe], label: 'Mach-O executable' },             // macOS
+      { bytes: [0x23, 0x21], label: 'Script (shebang)' },                           // #!/
+    ]
+    for (const sig of FORBIDDEN_MAGIC) {
+      if (sig.bytes.every((b, i) => fileBuffer[i] === b)) {
+        return { filename, ok: false, error: `Rejected: file content looks like ${sig.label}` }
+      }
+    }
+
+    await fs.writeFile(tmpPath, fileBuffer)
 
     const extracted = await extractMarkdownFromFile(tmpPath)
     const useImageEnrichment = admin.enableOpenAIImageEnrichment && IMAGE_UPLOAD_EXT.has(safeExt)

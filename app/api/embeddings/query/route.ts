@@ -1,6 +1,10 @@
+import { auth } from '@/auth'
 import { getLLMProvider } from '@/lib/llm/getLLMProvider'
 
 export async function POST(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const body = await request.json() as { question?: string }
   const question = body.question?.trim()
 

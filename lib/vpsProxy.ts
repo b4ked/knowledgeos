@@ -2,19 +2,21 @@
  * When VAULT_MODE=remote, heavy operations (embeddings, query, compile)
  * should run on the VPS backend which has the LLM API key and a writable
  * filesystem. This helper proxies the request to the VPS.
+ *
+ * Required env vars:
+ *   VPS_BASE_URL         — base URL of the VPS backend (e.g. http://localhost:4000)
+ *   VPS_PUBLIC_BASE_URL  — public-facing URL used when running on Vercel with a localhost VPS_BASE_URL
+ *   VPS_API_TOKEN        — bearer token for VPS authentication
  */
-const DEFAULT_PUBLIC_VPS_BASE_URL = 'https://api.parrytech.co/knos'
 
 function resolveVpsBaseUrl(rawBaseUrl?: string | null): string | null {
   const baseUrl = rawBaseUrl?.trim()
-  if (!baseUrl) {
-    return process.env.VERCEL ? DEFAULT_PUBLIC_VPS_BASE_URL : null
-  }
+  if (!baseUrl) return null
 
   try {
     const url = new URL(baseUrl)
     if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && process.env.VERCEL) {
-      return process.env.VPS_PUBLIC_BASE_URL?.trim() || DEFAULT_PUBLIC_VPS_BASE_URL
+      return process.env.VPS_PUBLIC_BASE_URL?.trim() || null
     }
     return baseUrl
   } catch {

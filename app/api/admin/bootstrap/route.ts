@@ -16,10 +16,11 @@ export async function POST() {
 
   const current = await db.query.users.findFirst({
     where: eq(users.id, session.user.id),
-    columns: { isAdmin: true, email: true },
+    columns: { isAdmin: true, email: true, emailVerified: true },
   })
 
   if (!current) return Response.json({ error: 'User not found' }, { status: 404 })
+  if (!current.emailVerified) return Response.json({ error: 'Email must be verified before bootstrapping admin' }, { status: 403 })
   if (current.isAdmin) return Response.json({ ok: true, alreadyAdmin: true })
   if ((count ?? 0) > 0) return Response.json({ error: 'Admin already exists' }, { status: 403 })
 

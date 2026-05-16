@@ -24,7 +24,11 @@ export async function POST(req: NextRequest) {
       where: eq(users.email, normalizedEmail),
     })
     if (existing) {
-      return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
+      // Return generic response to prevent email enumeration
+      return NextResponse.json(
+        { message: "If this email isn't already registered, an account has been created. Check your email." },
+        { status: 200 }
+      )
     }
 
     const hashedPassword = await bcrypt.hash(password, 12)

@@ -1,3 +1,4 @@
+import { auth } from '@/auth'
 import { getAnyVpsConfig } from '@/lib/vpsProxy'
 
 export const maxDuration = 60
@@ -20,6 +21,9 @@ async function proxy(path: string, method: 'GET' | 'POST', body?: unknown): Prom
 }
 
 export async function GET(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const url = new URL(request.url)
   const ownerId = url.searchParams.get('ownerId')
   const path = ownerId ? `/api/ingestion/jobs?ownerId=${encodeURIComponent(ownerId)}` : '/api/ingestion/jobs'
@@ -27,6 +31,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const body = await request.json()
   return proxy('/api/ingestion/jobs', 'POST', body)
 }

@@ -1,9 +1,13 @@
+import { auth } from '@/auth'
 import { z } from 'zod'
 import { scanVault } from '@/lib/knowledge/vault/scanVault'
 
 const Body = z.object({ path: z.string().min(1) })
 
 export async function POST(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })

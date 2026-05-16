@@ -1,6 +1,10 @@
+import { auth } from '@/auth'
 import { getPGliteDbPath, PGliteKnowledgeStore } from '@/lib/knowledge/adapters/PGliteKnowledgeStore'
 
 export async function GET(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
   const url = new URL(request.url)
   const workspaceId = url.searchParams.get('workspaceId')
   const vaultPath = url.searchParams.get('path')
